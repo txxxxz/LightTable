@@ -1,3 +1,3 @@
-from . import recommend, inventory, recipe
+from . import recommend, inventory, recipe, user
 
-__all__ = ["recommend", "inventory", "recipe"]
+__all__ = ["recommend", "inventory", "recipe", "user"]

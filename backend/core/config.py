@@ -29,6 +29,10 @@ DATA_DIR = BACKEND_DIR / "data"
 RECIPES_JSON = DATA_DIR / "recipes.json"
 CHROMA_PERSIST_DIR = DATA_DIR / "chroma_db"
 
+# 用户设置与偏好（关系型源数据）
+SQLITE_DB_PATH = DATA_DIR / "lighttable.db"
+DEFAULT_USER_ID = "default"
+
 # ============ Embedding Model ============
 EMBEDDING_MODEL_NAME: str = os.getenv(
     "EMBEDDING_MODEL_NAME", "BAAI/bge-small-zh-v1.5"

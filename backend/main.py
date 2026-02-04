@@ -11,9 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.core.config import has_openrouter, has_mem0
 from backend.services.llm_service import chat
+from backend.database import init_db
 
 # 路由
-from backend.routers import recommend, inventory, recipe
+from backend.routers import recommend, inventory, recipe, user
 
 app = FastAPI(title="LightTable API", version="0.1.0")
 
@@ -30,6 +31,12 @@ app.add_middleware(
 app.include_router(recommend.router)
 app.include_router(inventory.router)
 app.include_router(recipe.router)
+app.include_router(user.router)
+
+
+@app.on_event("startup")
+def startup():
+    init_db()
 
 
 @app.get("/")
