@@ -1,7 +1,16 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-dotenv
-llama-index
-mem0ai
-sqlite-utils
+httpx
 pydantic
+
+# LlamaIndex (Knowledge Engine)
+llama-index
+llama-index-embeddings-huggingface
+chromadb
+
+# Mem0 (Memory Engine)
+mem0ai
+
+# Utils
+sqlite-utils
