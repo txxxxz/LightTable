@@ -4,7 +4,12 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
 
-export type NumberEditType = "height" | "weight";
+export type NumberEditType =
+  | "height"
+  | "weight"
+  | "household_size"
+  | "time_budget_minutes"
+  | "purchase_frequency_per_week";
 
 const CONFIG: Record<
   NumberEditType,
@@ -12,7 +17,17 @@ const CONFIG: Record<
 > = {
   height: { min: 100, max: 250, step: 1, unit: "cm", label: "身高" },
   weight: { min: 30, max: 200, step: 0.5, unit: "kg", label: "体重" },
+  household_size: { min: 1, max: 8, step: 1, unit: "人", label: "家庭人数" },
+  time_budget_minutes: { min: 10, max: 90, step: 5, unit: "分钟", label: "工作日时间预算" },
+  purchase_frequency_per_week: { min: 1, max: 4, step: 1, unit: "次/周", label: "每周采购频率" },
 };
+
+function formatOptionValue(type: NumberEditType, value: number, unit: string) {
+  if (type === "purchase_frequency_per_week" && value >= 4) {
+    return `4+ ${unit}`;
+  }
+  return `${value} ${unit}`;
+}
 
 function generateOptions(min: number, max: number, step: number): number[] {
   const opts: number[] = [];
@@ -178,7 +193,7 @@ export function NumberEditSheet({
                   )}
                   style={{ height: ROW_HEIGHT }}
                 >
-                  {opt} {config.unit}
+                  {formatOptionValue(type, opt, config.unit)}
                 </div>
               ))}
               {/* 底部占位 */}

@@ -35,7 +35,7 @@ export function SettingsRow({
     <Wrapper
       onClick={onClick}
       className={cn(
-        "w-full flex items-center justify-between px-4 h-14",
+        "flex min-h-14 w-full items-center justify-between gap-4 px-4 py-3 lg:px-5",
         "bg-white",
         !isLast && "border-b border-zinc-100",
         onClick && "active:bg-zinc-50 transition-colors cursor-pointer",
@@ -43,18 +43,20 @@ export function SettingsRow({
         className
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         {icon && (
           <span className="text-primary flex-shrink-0 w-5 h-5 flex items-center justify-center">
             {icon}
           </span>
         )}
-        <span className="text-zinc-900 font-medium text-base">{label}</span>
+        <span className="truncate text-base font-medium text-zinc-900">{label}</span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="ml-4 flex shrink-0 items-center gap-2">
         {value && (
-          <span className="text-zinc-500 text-sm">{value}</span>
+          <span className="max-w-[10rem] text-right text-sm text-zinc-500 sm:max-w-none">
+            {value}
+          </span>
         )}
         {action}
         {showChevron && (

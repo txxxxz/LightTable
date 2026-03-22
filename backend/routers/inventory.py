@@ -1,52 +1,173 @@
-"""
-库存相关 API（前端库存页使用）
-"""
-from fastapi import APIRouter
-from pydantic import BaseModel
+from __future__ import annotations
 
-from backend.schemas.inventory import InventoryItem, InventoryStatus
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
-router = APIRouter(prefix="/api/v1/inventory", tags=["inventory"])
+from backend.database import (
+    add_manual_shopping_item,
+    delete_inventory_item,
+    list_inventory,
+    list_shopping_list_items,
+    update_inventory_item,
+    update_shopping_list_item,
+    upsert_inventory_items,
+)
+from backend.schemas.inventory import (
+    AddInventoryItemsRequest,
+    AddShoppingListItemsRequest,
+    InventoryCandidateResponse,
+    InventoryItem,
+    InventoryListResponse,
+    ParseInventoryTextRequest,
+    ShoppingListItem,
+    ShoppingListManualAddRequest,
+    ShoppingListResponse,
+    ShoppingListUpdateRequest,
+    UpdateInventoryItemRequest,
+)
+from backend.services.ingredient_service import (
+    build_inventory_candidate,
+    enrich_candidates_with_categories,
+    ensure_category_key,
+    ImageRecognitionError,
+    normalize_ingredient_name,
+    parse_freeform_inventory_text,
+    recognize_from_uploaded_file,
+)
 
-# 内存中的库存存储（简化版，后续可接数据库）
-_user_inventories: dict[str, list[InventoryItem]] = {}
+router = APIRouter(prefix="/api/v1", tags=["inventory"])
 
 
-class AddItemsRequest(BaseModel):
-    user_id: str
-    items: list[InventoryItem]
+def _to_inventory_schema(item: dict) -> InventoryItem:
+    return InventoryItem(**item)
 
 
-class AddItemsResponse(BaseModel):
-    ok: bool
-    count: int
-
-
-class InventoryListResponse(BaseModel):
-    items: list[InventoryItem]
-
-
-@router.get("/{user_id}", response_model=InventoryListResponse)
+@router.get("/inventory/{user_id}", response_model=InventoryListResponse)
 async def get_inventory(user_id: str) -> InventoryListResponse:
-    """获取用户库存列表"""
-    items = _user_inventories.get(user_id, [])
-    return InventoryListResponse(items=items)
+    return InventoryListResponse(items=[_to_inventory_schema(item) for item in list_inventory(user_id)])
 
 
-@router.post("/add", response_model=AddItemsResponse)
-async def add_items(request: AddItemsRequest) -> AddItemsResponse:
-    """添加食材到库存"""
-    if request.user_id not in _user_inventories:
-        _user_inventories[request.user_id] = []
-    _user_inventories[request.user_id].extend(request.items)
-    return AddItemsResponse(ok=True, count=len(request.items))
+@router.post("/inventory/parse-text", response_model=InventoryCandidateResponse)
+async def parse_inventory_text(request: ParseInventoryTextRequest) -> InventoryCandidateResponse:
+    items = await enrich_candidates_with_categories(parse_freeform_inventory_text(request.text))
+    return InventoryCandidateResponse(items=[_to_inventory_schema(item) for item in items])
 
 
-@router.delete("/{user_id}/{item_id}")
-async def delete_item(user_id: str, item_id: str) -> dict:
-    """删除库存中的食材"""
-    if user_id in _user_inventories:
-        _user_inventories[user_id] = [
-            i for i in _user_inventories[user_id] if i.id != item_id
-        ]
+@router.post("/inventory/recognize", response_model=InventoryCandidateResponse)
+async def recognize_inventory(
+    user_id: str = Query(...),
+    source_type: str = Query("image"),
+    file: UploadFile = File(...),
+) -> InventoryCandidateResponse:
+    del user_id
+    file_bytes = await file.read()
+    try:
+        items = await recognize_from_uploaded_file(
+            file_bytes,
+            file.filename or "upload.jpg",
+            source_type=source_type,
+        )
+    except ImageRecognitionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"图片识别失败: {exc}") from exc
+    return InventoryCandidateResponse(items=[_to_inventory_schema(item) for item in items])
+
+
+@router.post("/inventory/items", response_model=InventoryListResponse)
+async def save_inventory_items(request: AddInventoryItemsRequest) -> InventoryListResponse:
+    normalized = [
+        build_inventory_candidate(
+            item.display_name,
+            quantity_text=item.quantity_text,
+            category=item.category,
+            storage_type=item.storage_type.value if item.storage_type else None,
+            source_type=item.source_type.value,
+            date_added=item.date_added,
+            image_url=item.image_url,
+        )
+        for item in request.items
+    ]
+    upsert_inventory_items(request.user_id, normalized)
+    return InventoryListResponse(items=[_to_inventory_schema(item) for item in list_inventory(request.user_id)])
+
+
+@router.patch("/inventory/items/{item_id}", response_model=InventoryItem)
+async def patch_inventory_item(
+    item_id: str,
+    request: UpdateInventoryItemRequest,
+    user_id: str = Query(...),
+) -> InventoryItem:
+    updated = update_inventory_item(
+        user_id,
+        item_id,
+        {
+            key: value.value if hasattr(value, "value") else value
+            for key, value in request.model_dump(exclude_none=True).items()
+        },
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    return _to_inventory_schema(updated)
+
+
+@router.delete("/inventory/items/{item_id}")
+async def remove_inventory_item(item_id: str, user_id: str = Query(...)) -> dict[str, bool]:
+    deleted = delete_inventory_item(user_id, item_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
     return {"ok": True}
+
+
+@router.get("/shopping-list/{user_id}", response_model=ShoppingListResponse)
+async def get_shopping_list(user_id: str) -> ShoppingListResponse:
+    return ShoppingListResponse(items=[ShoppingListItem(**item) for item in list_shopping_list_items(user_id)])
+
+
+@router.patch("/shopping-list/items/{item_id}", response_model=ShoppingListItem)
+async def patch_shopping_list_item(
+    item_id: str,
+    request: ShoppingListUpdateRequest,
+    user_id: str = Query(...),
+) -> ShoppingListItem:
+    updated = update_shopping_list_item(user_id, item_id, checked=request.checked)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Shopping item not found")
+    return ShoppingListItem(**updated)
+
+
+@router.post("/shopping-list/manual", response_model=ShoppingListItem)
+async def add_shopping_item(request: ShoppingListManualAddRequest) -> ShoppingListItem:
+    item = add_manual_shopping_item(
+        request.user_id,
+        display_name=request.display_name,
+        normalized_name=request.normalized_name or normalize_ingredient_name(request.display_name),
+        category=ensure_category_key(request.category, raw_name=request.display_name),
+        quantity_text=request.quantity_text,
+        recommended_quantity_text=request.recommended_quantity_text,
+        reason=request.reason,
+        priority=request.priority,
+    )
+    return ShoppingListItem(**item)
+
+
+@router.post("/shopping-list/items", response_model=ShoppingListResponse)
+async def save_shopping_list_items(request: AddShoppingListItemsRequest) -> ShoppingListResponse:
+    saved_items = [
+        add_manual_shopping_item(
+            request.user_id,
+            display_name=item.display_name,
+            normalized_name=item.normalized_name or normalize_ingredient_name(item.display_name),
+            category=ensure_category_key(item.category, raw_name=item.display_name),
+            quantity_text=item.quantity_text,
+            recommended_quantity_text=item.recommended_quantity_text,
+            reason=item.reason,
+            priority=item.priority,
+        )
+        for item in request.items
+    ]
+    del saved_items
+    return ShoppingListResponse(items=[ShoppingListItem(**item) for item in list_shopping_list_items(request.user_id)])

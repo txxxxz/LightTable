@@ -3,26 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// ==================== 类型定义 ====================
-
-export type Goal = "fat_loss" | "maintain" | "muscle_gain";
-export type CookingLevel = "survival" | "home_cook" | "chef";
-
-export interface BodyProfile {
-  height: number; // cm
-  weight: number; // kg
-  goal: Goal;
-}
-
-export interface KitchenPreferences {
-  dislikes: string[]; // 不喜欢的食材
-  cookingLevel: CookingLevel;
-}
-
-export interface SystemSettings {
-  expiryAlert: boolean;
-  debugMode: boolean;
-}
+import type { CookingLevel, Goal } from "./types";
 
 export interface DebugLog {
   id: string;
@@ -31,106 +12,31 @@ export interface DebugLog {
   message: string;
 }
 
-// ==================== Store 接口 ====================
-
 interface GlobalStore {
-  // Body Profile
-  bodyProfile: BodyProfile;
-  setBodyProfile: (profile: Partial<BodyProfile>) => void;
-
-  // Kitchen Preferences
-  preferences: KitchenPreferences;
-  setPreferences: (prefs: Partial<KitchenPreferences>) => void;
-  addDislike: (item: string) => void;
-  removeDislike: (item: string) => void;
-
-  // System Settings
-  system: SystemSettings;
-  setDebugMode: (enabled: boolean) => void;
-  setExpiryAlert: (enabled: boolean) => void;
-
-  // Debug Logs
+  system: {
+    debugMode: boolean;
+  };
   debugLogs: DebugLog[];
+  setDebugMode: (enabled: boolean) => void;
   addDebugLog: (type: DebugLog["type"], message: string) => void;
   clearDebugLogs: () => void;
 }
 
-// ==================== Store 实现 ====================
-
 export const useGlobalStore = create<GlobalStore>()(
   persist(
-    (set, get) => ({
-      // ========== Body Profile ==========
-      bodyProfile: {
-        height: 170,
-        weight: 65,
-        goal: "maintain",
-      },
-
-      setBodyProfile: (profile) =>
-        set((state) => ({
-          bodyProfile: { ...state.bodyProfile, ...profile },
-        })),
-
-      // ========== Kitchen Preferences ==========
-      preferences: {
-        dislikes: [],
-        cookingLevel: "home_cook",
-      },
-
-      setPreferences: (prefs) =>
-        set((state) => ({
-          preferences: { ...state.preferences, ...prefs },
-        })),
-
-      addDislike: (item) => {
-        const current = get().preferences.dislikes;
-        if (!current.includes(item)) {
-          set((state) => ({
-            preferences: {
-              ...state.preferences,
-              dislikes: [...state.preferences.dislikes, item],
-            },
-          }));
-          // Mock: 触发 Mem0 记忆添加
-          get().addDebugLog("mem0", `[Mem0] Adding memory: User dislikes "${item}"`);
-        }
-      },
-
-      removeDislike: (item) => {
-        set((state) => ({
-          preferences: {
-            ...state.preferences,
-            dislikes: state.preferences.dislikes.filter((d) => d !== item),
-          },
-        }));
-        // Mock: 触发 Mem0 记忆删除
-        get().addDebugLog("mem0", `[Mem0] Removing memory: User dislikes "${item}"`);
-      },
-
-      // ========== System Settings ==========
+    (set) => ({
       system: {
-        expiryAlert: true,
         debugMode: false,
       },
-
+      debugLogs: [],
       setDebugMode: (enabled) =>
         set((state) => ({
           system: { ...state.system, debugMode: enabled },
         })),
-
-      setExpiryAlert: (enabled) =>
-        set((state) => ({
-          system: { ...state.system, expiryAlert: enabled },
-        })),
-
-      // ========== Debug Logs ==========
-      debugLogs: [],
-
       addDebugLog: (type, message) =>
         set((state) => ({
           debugLogs: [
-            ...state.debugLogs.slice(-49), // 保留最近 50 条
+            ...state.debugLogs.slice(-49),
             {
               id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
               timestamp: new Date(),
@@ -139,21 +45,16 @@ export const useGlobalStore = create<GlobalStore>()(
             },
           ],
         })),
-
       clearDebugLogs: () => set({ debugLogs: [] }),
     }),
     {
-      name: "lighttable-settings",
+      name: "lighttable-debug",
       partialize: (state) => ({
-        bodyProfile: state.bodyProfile,
-        preferences: state.preferences,
         system: state.system,
       }),
     }
   )
 );
-
-// ==================== 辅助函数 ====================
 
 export const goalLabels: Record<Goal, string> = {
   fat_loss: "减脂",
@@ -165,4 +66,30 @@ export const cookingLevelLabels: Record<CookingLevel, string> = {
   survival: "生存",
   home_cook: "家常",
   chef: "大厨",
+};
+
+export const FLAVOR_OPTIONS = ["清淡", "重口味", "辣", "酸甜", "低碳水", "高蛋白"] as const;
+export const CUISINE_OPTIONS = ["川菜", "粤菜", "湘菜", "家常", "西式", "日韩", "东南亚", "其他"] as const;
+export const METHOD_OPTIONS = ["炒", "煮", "蒸", "烤", "煎", "炸", "凉拌", "微波", "炖", "快手"] as const;
+export const HEALTH_CONSTRAINT_OPTIONS = [
+  "gluten_free",
+  "diabetes_friendly",
+  "low_sugar",
+  "low_sodium",
+  "high_protein",
+  "dairy_free",
+  "nut_free",
+  "vegetarian",
+] as const;
+export const KITCHEN_TOOL_OPTIONS = ["空气炸锅", "烤箱", "微波炉", "电饭煲", "不粘锅"] as const;
+
+export const healthConstraintLabels: Record<(typeof HEALTH_CONSTRAINT_OPTIONS)[number], string> = {
+  gluten_free: "无麸质",
+  diabetes_friendly: "控糖友好",
+  low_sugar: "低糖",
+  low_sodium: "低钠",
+  high_protein: "高蛋白",
+  dairy_free: "无乳制品",
+  nut_free: "无坚果",
+  vegetarian: "素食",
 };

@@ -3,6 +3,7 @@ uvicorn[standard]
 python-dotenv
 httpx
 pydantic
+python-multipart
 
 # LlamaIndex (Knowledge Engine)
 llama-index

@@ -17,6 +17,8 @@ build/
 # Node / Next
 node_modules/
 .next/
+.next.bak.*/
+.next_reset_*/
 out/
 *.tsbuildinfo
 
@@ -24,3 +26,4 @@ out/
 .idea/
 .DS_Store
 *.log
+.logs/

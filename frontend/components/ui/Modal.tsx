@@ -15,7 +15,7 @@ interface ModalProps {
 }
 
 /**
- * 底部滑出的模态框 (Sheet 样式)
+ * 移动端底部抽屉 + 桌面端居中对话框
  */
 export function Modal({ isOpen, onClose, title, children, className }: ModalProps) {
   // 按 ESC 关闭
@@ -41,7 +41,6 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -51,43 +50,40 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
             className="fixed inset-0 bg-black/40 z-50"
           />
 
-          {/* Sheet */}
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className={cn(
-              "fixed bottom-0 left-0 right-0 z-50",
-              "bg-white rounded-t-2xl",
-              "max-h-[85vh] overflow-hidden",
-              "pb-safe",
-              className
-            )}
-          >
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-2">
-              <div className="w-10 h-1 bg-zinc-300 rounded-full" />
-            </div>
-
-            {/* Header */}
-            {title && (
-              <div className="flex items-center justify-between px-4 pb-3 border-b border-zinc-100">
-                <h3 className="text-lg font-semibold text-zinc-900">{title}</h3>
-                <button
-                  onClick={onClose}
-                  className="p-2 -mr-2 text-zinc-500 hover:text-zinc-700 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+          <div className="fixed inset-0 z-50 flex items-end justify-center lg:items-center lg:p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 32 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 32 }}
+              transition={{ type: "spring", damping: 28, stiffness: 280 }}
+              className={cn(
+                "w-full overflow-hidden bg-white pb-safe shadow-2xl",
+                "max-h-[85vh] rounded-t-[28px]",
+                "lg:max-h-[min(720px,calc(100vh-2rem))] lg:max-w-2xl lg:rounded-[28px] lg:pb-0",
+                className
+              )}
+            >
+              <div className="flex justify-center pt-3 pb-2 lg:hidden">
+                <div className="h-1 w-10 rounded-full bg-zinc-300" />
               </div>
-            )}
 
-            {/* Content */}
-            <div className="overflow-y-auto max-h-[calc(85vh-80px)] px-4 py-4">
-              {children}
-            </div>
-          </motion.div>
+              {title && (
+                <div className="flex items-center justify-between border-b border-zinc-100 px-4 pb-3 lg:px-6 lg:pt-5">
+                  <h3 className="text-lg font-semibold text-zinc-900">{title}</h3>
+                  <button
+                    onClick={onClose}
+                    className="p-2 -mr-2 text-zinc-500 transition-colors hover:text-zinc-700"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              <div className="max-h-[calc(85vh-80px)] overflow-y-auto px-4 py-4 lg:max-h-[calc(min(720px,100vh-2rem)-84px)] lg:px-6 lg:py-5">
+                {children}
+              </div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

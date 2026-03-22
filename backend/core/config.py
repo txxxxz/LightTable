@@ -26,11 +26,11 @@ def has_openrouter() -> bool:
 # ============ Paths ============
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BACKEND_DIR / "data"
-RECIPES_JSON = DATA_DIR / "recipes.json"
+RECIPES_JSON = Path(os.getenv("LIGHTTABLE_RECIPES_JSON", str(DATA_DIR / "recipes.json")))
 CHROMA_PERSIST_DIR = DATA_DIR / "chroma_db"
 
 # 用户设置与偏好（关系型源数据）
-SQLITE_DB_PATH = DATA_DIR / "lighttable.db"
+SQLITE_DB_PATH = Path(os.getenv("LIGHTTABLE_SQLITE_DB_PATH", str(DATA_DIR / "lighttable.db")))
 DEFAULT_USER_ID = "default"
 
 # ============ Embedding Model ============
@@ -40,6 +40,9 @@ EMBEDDING_MODEL_NAME: str = os.getenv(
 
 # ============ Mem0 ============
 MEM0_API_KEY: str | None = os.getenv("MEM0_API_KEY")
+
+# ============ Optional RedNote MCP ============
+REDNOTE_MCP_COMMAND: str | None = os.getenv("REDNOTE_MCP_COMMAND")
 
 def has_mem0() -> bool:
     return bool(MEM0_API_KEY)

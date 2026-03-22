@@ -21,7 +21,7 @@ export function IngredientCard({ item }: { item: InventoryItem }) {
   return (
     <li
       className={cn(
-        "flex items-center gap-3 rounded-lg border border-border bg-surface p-3"
+        "flex h-full items-center gap-3 rounded-2xl border border-border bg-surface p-3 sm:p-4"
       )}
     >
       <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[6px] bg-background border border-border">
@@ -38,9 +38,9 @@ export function IngredientCard({ item }: { item: InventoryItem }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-text-main truncate">{item.name}</p>
-        {item.quantity && (
-          <p className="text-sm text-text-muted truncate">{item.quantity}</p>
+        <p className="font-medium text-text-main truncate">{item.displayName}</p>
+        {item.quantityText && (
+          <p className="text-sm text-text-muted truncate">{item.quantityText}</p>
         )}
       </div>
       <span

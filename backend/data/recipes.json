@@ -1,63 +1,209 @@
 [
   {
     "id": "r_001",
-    "name": "青椒肉丝",
-    "ingredients": [
-      "猪里脊 200g",
-      "青椒 2 个",
-      "蒜 2 瓣",
-      "生抽 1 勺",
-      "淀粉 少许",
-      "盐 适量"
-    ],
+    "name": "番茄豆腐蛋花汤",
+    "ingredients": ["番茄 2 个", "豆腐 1 盒", "鸡蛋 2 个", "葱 少许", "盐 适量"],
+    "core_ingredients": ["番茄", "豆腐", "鸡蛋"],
+    "optional_ingredients": ["葱"],
     "steps": [
-      "里脊切丝，加少许盐、生抽、淀粉抓匀，腌 10 分钟。",
-      "青椒切丝，蒜切片。",
-      "热锅少油，下肉丝快速滑散变色盛出。",
-      "下蒜片爆香，加入青椒丝翻炒至断生。",
-      "倒回肉丝，少量生抽调味，快速翻炒出锅。"
+      "番茄切块，豆腐切小块，鸡蛋打散。",
+      "锅里加水煮开，下番茄煮到出汁。",
+      "放入豆腐再煮 3 分钟，沿锅边淋入蛋液。",
+      "加少许盐，撒上葱花即可。"
     ],
-    "tags": ["家常", "快手", "下饭", "炒"]
+    "tags": ["家常", "汤", "快手"],
+    "time_minutes": 15,
+    "difficulty": "A",
+    "nutrition_tags": ["low_sugar", "high_protein", "gluten_free"],
+    "allergen_tags": ["egg"],
+    "constraint_tags": ["vegetarian", "diabetes_friendly", "gluten_free"]
   },
   {
     "id": "r_002",
-    "name": "番茄炒蛋",
-    "ingredients": [
-      "番茄 2 个",
-      "鸡蛋 3 个",
-      "葱 少许",
-      "盐 适量",
-      "糖 少许（可选）"
-    ],
+    "name": "青椒鸡胸肉快炒",
+    "ingredients": ["鸡胸肉 200g", "青椒 2 个", "蒜 2 瓣", "生抽 1 勺", "黑胡椒 少许"],
+    "core_ingredients": ["鸡胸肉", "青椒", "酱油", "胡椒"],
+    "optional_ingredients": ["蒜"],
     "steps": [
-      "番茄切块，鸡蛋加少许盐打散。",
-      "热锅下油，倒入蛋液炒到凝固成块盛出。",
-      "下葱花爆香，加入番茄翻炒出汁。",
-      "倒回鸡蛋，按口味加盐（可选少许糖提鲜），翻匀出锅。"
+      "鸡胸肉切片，少许生抽和黑胡椒抓匀。",
+      "青椒切块，热锅下少油。",
+      "先炒鸡胸肉至变色，再下青椒翻匀。",
+      "收汁后直接出锅。"
     ],
-    "tags": ["家常", "快手", "酸甜", "炒"]
+    "tags": ["家常", "炒", "高蛋白"],
+    "time_minutes": 18,
+    "difficulty": "A",
+    "nutrition_tags": ["high_protein", "low_sugar", "gluten_free"],
+    "allergen_tags": [],
+    "constraint_tags": ["diabetes_friendly", "gluten_free", "dairy_free"]
   },
   {
     "id": "r_003",
-    "name": "鱼香茄子",
-    "ingredients": [
-      "茄子 2 根",
-      "猪肉末 80g（可选）",
-      "蒜 3 瓣",
-      "姜 少许",
-      "郫县豆瓣 1 勺",
-      "生抽 1 勺",
-      "醋 1 勺",
-      "糖 1 小勺（可选）",
-      "淀粉水 适量"
-    ],
+    "name": "西兰花虾仁",
+    "ingredients": ["西兰花 1 朵", "虾仁 200g", "蒜 2 瓣", "盐 少许", "黑胡椒 少许"],
+    "core_ingredients": ["西兰花", "虾仁", "胡椒"],
+    "optional_ingredients": ["蒜"],
     "steps": [
-      "茄子切条/块，少油煎软或过油备用。",
-      "蒜姜切末，热锅少油下豆瓣炒出红油。",
-      "加入肉末炒散（可选），再下茄子翻匀。",
-      "加入生抽、醋调味（可选少许糖），加少量水焖 2-3 分钟。",
-      "淋入淀粉水收汁，出锅。"
+      "西兰花焯水备用，虾仁吸干水分。",
+      "锅里少油，下蒜末和虾仁翻炒。",
+      "加入西兰花翻匀，加盐和黑胡椒调味。",
+      "炒到虾仁卷起即可出锅。"
     ],
-    "tags": ["川味", "下饭", "偏辣", "炒", "家常"]
+    "tags": ["清淡", "炒", "高蛋白"],
+    "time_minutes": 20,
+    "difficulty": "B",
+    "nutrition_tags": ["high_protein", "low_sugar", "low_sodium", "gluten_free"],
+    "allergen_tags": ["shellfish"],
+    "constraint_tags": ["diabetes_friendly", "gluten_free", "dairy_free"]
+  },
+  {
+    "id": "r_004",
+    "name": "香菇豆腐煲",
+    "ingredients": ["豆腐 1 盒", "香菇 6 朵", "葱 少许", "生抽 1 勺", "水淀粉 少许"],
+    "core_ingredients": ["豆腐", "香菇", "酱油", "淀粉"],
+    "optional_ingredients": ["葱"],
+    "steps": [
+      "豆腐切块，香菇切片。",
+      "锅中少油，下香菇炒软，再放豆腐。",
+      "加少量生抽和清水焖煮 5 分钟。",
+      "最后勾一点薄芡，撒葱花出锅。"
+    ],
+    "tags": ["家常", "煲", "素菜"],
+    "time_minutes": 25,
+    "difficulty": "B",
+    "nutrition_tags": ["low_sugar", "dairy_free"],
+    "allergen_tags": [],
+    "constraint_tags": ["vegetarian", "diabetes_friendly", "dairy_free"]
+  },
+  {
+    "id": "r_005",
+    "name": "番茄牛肉炖菜",
+    "ingredients": ["牛肉 250g", "番茄 2 个", "洋葱 半个", "胡萝卜 1 根", "盐 适量"],
+    "core_ingredients": ["牛肉", "番茄"],
+    "optional_ingredients": ["洋葱", "胡萝卜"],
+    "steps": [
+      "牛肉切块焯水，番茄切块。",
+      "牛肉先炖 20 分钟至变软。",
+      "加入番茄和其他蔬菜继续炖 15 分钟。",
+      "收至汤汁浓郁后调味即可。"
+    ],
+    "tags": ["炖", "进阶", "高蛋白"],
+    "time_minutes": 40,
+    "difficulty": "C",
+    "nutrition_tags": ["high_protein", "low_sugar", "gluten_free"],
+    "allergen_tags": [],
+    "constraint_tags": ["diabetes_friendly", "gluten_free", "dairy_free"]
+  },
+  {
+    "id": "r_006",
+    "name": "蒜蓉菠菜鸡蛋",
+    "ingredients": ["菠菜 1 把", "鸡蛋 2 个", "蒜 2 瓣", "盐 少许"],
+    "core_ingredients": ["菠菜", "鸡蛋"],
+    "optional_ingredients": ["蒜"],
+    "steps": [
+      "菠菜洗净切段，鸡蛋炒散盛出。",
+      "锅中少油，下蒜末爆香。",
+      "放菠菜炒软，再倒回鸡蛋翻匀。",
+      "少量调味后即可出锅。"
+    ],
+    "tags": ["快手", "家常", "炒"],
+    "time_minutes": 12,
+    "difficulty": "A",
+    "nutrition_tags": ["low_sugar", "gluten_free"],
+    "allergen_tags": ["egg"],
+    "constraint_tags": ["vegetarian", "diabetes_friendly", "gluten_free"]
+  },
+  {
+    "id": "r_007",
+    "name": "凉拌黄瓜鸡丝",
+    "ingredients": ["黄瓜 2 根", "鸡胸肉 150g", "蒜 2 瓣", "醋 1 勺", "香油 少许"],
+    "core_ingredients": ["黄瓜", "鸡胸肉", "醋"],
+    "optional_ingredients": ["蒜"],
+    "steps": [
+      "鸡胸肉煮熟后撕成丝，黄瓜拍碎切段。",
+      "蒜末、醋和少量香油调成料汁。",
+      "鸡丝和黄瓜拌匀，淋上料汁即可。"
+    ],
+    "tags": ["凉拌", "快手", "高蛋白"],
+    "time_minutes": 15,
+    "difficulty": "A",
+    "nutrition_tags": ["high_protein", "low_sugar", "gluten_free", "dairy_free"],
+    "allergen_tags": [],
+    "constraint_tags": ["diabetes_friendly", "gluten_free", "dairy_free"]
+  },
+  {
+    "id": "r_008",
+    "name": "蘑菇炒牛肉",
+    "ingredients": ["牛肉 200g", "蘑菇 200g", "青椒 1 个", "黑胡椒 少许", "盐 少许"],
+    "core_ingredients": ["牛肉", "蘑菇"],
+    "optional_ingredients": ["青椒"],
+    "steps": [
+      "牛肉切片腌一下，蘑菇切片。",
+      "热锅少油，先炒牛肉到七分熟。",
+      "加入蘑菇和青椒炒到蘑菇变软。",
+      "黑胡椒和少许盐调味出锅。"
+    ],
+    "tags": ["炒", "家常", "高蛋白"],
+    "time_minutes": 22,
+    "difficulty": "B",
+    "nutrition_tags": ["high_protein", "low_sugar", "gluten_free"],
+    "allergen_tags": [],
+    "constraint_tags": ["diabetes_friendly", "gluten_free", "dairy_free"]
+  },
+  {
+    "id": "r_009",
+    "name": "燕麦酸奶杯",
+    "ingredients": ["燕麦 1 杯", "酸奶 1 杯", "圣女果 6 个", "坚果 少许"],
+    "core_ingredients": ["燕麦", "酸奶"],
+    "optional_ingredients": ["圣女果"],
+    "steps": [
+      "酸奶和燕麦分层装杯。",
+      "上面放一点切开的圣女果和少量坚果。",
+      "冷藏 10 分钟后即可食用。"
+    ],
+    "tags": ["早餐", "冷食", "快手"],
+    "time_minutes": 10,
+    "difficulty": "A",
+    "nutrition_tags": ["high_protein"],
+    "allergen_tags": ["dairy", "nuts", "gluten"],
+    "constraint_tags": []
+  },
+  {
+    "id": "r_010",
+    "name": "三文鱼蔬菜烤盘",
+    "ingredients": ["三文鱼 1 块", "西兰花 1 朵", "番茄 1 个", "黑胡椒 少许", "橄榄油 少许"],
+    "core_ingredients": ["三文鱼", "西兰花", "食用油", "胡椒"],
+    "optional_ingredients": ["番茄"],
+    "steps": [
+      "三文鱼和蔬菜摆入烤盘。",
+      "撒黑胡椒和少量橄榄油。",
+      "180 度烤 15 分钟。",
+      "出炉后直接食用。"
+    ],
+    "tags": ["烤", "进阶", "高蛋白"],
+    "time_minutes": 25,
+    "difficulty": "C",
+    "nutrition_tags": ["high_protein", "low_sugar", "gluten_free", "dairy_free"],
+    "allergen_tags": ["fish"],
+    "constraint_tags": ["diabetes_friendly", "gluten_free", "dairy_free"]
+  },
+  {
+    "id": "r_011",
+    "name": "蚝油生菜",
+    "ingredients": ["生菜 1 颗", "蚝油 1 勺", "蒜 2 瓣", "食用油 少许"],
+    "core_ingredients": ["生菜", "蚝油"],
+    "optional_ingredients": ["蒜", "食用油"],
+    "steps": [
+      "生菜洗净沥水，蒜切末。",
+      "锅里放少量油，下蒜末炒香。",
+      "放生菜快速翻几下，加入蚝油拌匀。",
+      "生菜刚断生就立刻出锅。"
+    ],
+    "tags": ["快手", "家常", "炒"],
+    "time_minutes": 8,
+    "difficulty": "A",
+    "nutrition_tags": ["low_sugar", "dairy_free"],
+    "allergen_tags": ["shellfish"],
+    "constraint_tags": ["dairy_free"]
   }
 ]

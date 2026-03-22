@@ -34,8 +34,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body className="min-h-screen bg-background text-text-main">
-        <div className="pb-20 pb-safe">
-          {children}
+        <div className="relative min-h-screen overflow-x-hidden">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_top,rgba(196,214,182,0.35),transparent_68%)]" />
+          <div className="relative mx-auto w-full max-w-7xl pb-24 pb-safe lg:pb-32">
+            {children}
+          </div>
         </div>
         <DebugOverlay />
         <BottomNav />

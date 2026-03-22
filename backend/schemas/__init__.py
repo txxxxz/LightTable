@@ -1,30 +1,48 @@
-from .inventory import InventoryItem, InventoryStatus
-from .recipe import Recipe, RecipeHit
-from .recommend import RecommendRequest, RecommendResponse, RecipePlan
-from .feedback import FeedbackRequest, FeedbackResponse
+from .feedback import FeedbackRequest, FeedbackResponse, RecipeCompletionRequest
+from .inventory import (
+    InventoryCandidateInput,
+    InventoryCandidateResponse,
+    InventoryItem,
+    InventoryListResponse,
+    InventoryStatus,
+    ShoppingListItem,
+    ShoppingListResponse,
+)
+from .recipe import RecipeDetail, RecipeHit, VideoReference
+from .recommend import PlanDish, RecommendationPlan, RecommendRequest, RecommendResponse
 from .user import (
-    UserProfileResponse,
     BodyProfileSchema,
-    PreferencesSchema,
-    SystemSchema,
     BodyProfileUpdate,
     PreferenceUpdateRequest,
+    PreferencesSchema,
+    SystemSchema,
+    SystemUpdateRequest,
+    UserProfileResponse,
 )
 
 __all__ = [
-    "InventoryItem",
-    "InventoryStatus",
-    "Recipe",
-    "RecipeHit",
-    "RecommendRequest",
-    "RecommendResponse",
-    "RecipePlan",
     "FeedbackRequest",
     "FeedbackResponse",
-    "UserProfileResponse",
+    "RecipeCompletionRequest",
+    "InventoryCandidateInput",
+    "InventoryCandidateResponse",
+    "InventoryItem",
+    "InventoryListResponse",
+    "InventoryStatus",
+    "ShoppingListItem",
+    "ShoppingListResponse",
+    "RecipeDetail",
+    "RecipeHit",
+    "VideoReference",
+    "PlanDish",
+    "RecommendationPlan",
+    "RecommendRequest",
+    "RecommendResponse",
     "BodyProfileSchema",
-    "PreferencesSchema",
-    "SystemSchema",
     "BodyProfileUpdate",
     "PreferenceUpdateRequest",
+    "PreferencesSchema",
+    "SystemSchema",
+    "SystemUpdateRequest",
+    "UserProfileResponse",
 ]

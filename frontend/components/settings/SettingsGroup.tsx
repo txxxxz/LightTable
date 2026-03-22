@@ -15,13 +15,13 @@ interface SettingsGroupProps {
  */
 export function SettingsGroup({ title, children, className }: SettingsGroupProps) {
   return (
-    <section className={cn("mb-6", className)}>
+    <section className={cn("mb-6 lg:mb-0", className)}>
       {title && (
-        <h2 className="text-sm font-medium text-text-muted mb-2 px-1">
+        <h2 className="mb-2 px-1 text-sm font-medium text-text-muted">
           {title}
         </h2>
       )}
-      <div className="bg-white rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-[24px] bg-white shadow-sm ring-1 ring-zinc-950/5">
         {children}
       </div>
     </section>

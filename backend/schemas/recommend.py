@@ -1,25 +1,38 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+from .inventory import ShoppingListItem
 from .recipe import RecipeHit
 
 
 class RecommendRequest(BaseModel):
     user_id: str
-    inventory: list[str]  # 食材名列表
-    tags: list[str] = []  # 用户选择的标签：消耗临期、减脂、快手菜等
-    context: dict | None = None  # 可选：day_type, time_budget_minutes
+    tags: list[str] = Field(default_factory=list)
+    context: dict | None = None
 
 
-class RecipePlan(BaseModel):
+class PlanDish(BaseModel):
     recipe_id: str
-    name: str
-    matched_ingredients: list[str]
-    time_minutes: int | None
+    title: str
+
+
+class RecommendationPlan(BaseModel):
+    plan_id: str
+    label: str
+    dishes: list[PlanDish]
+    matched_inventory: list[str] = Field(default_factory=list)
+    missing_ingredients: list[str] = Field(default_factory=list)
+    time_minutes: int | None = None
+    difficulty: str
+    fit_tags: list[str] = Field(default_factory=list)
     reason: str
 
 
 class RecommendResponse(BaseModel):
     request_id: str
     profile_summary: str
-    refined_query: str
-    plans: list[RecipePlan]
-    retrieval: list[RecipeHit]
+    strategy_summary: str
+    plans: list[RecommendationPlan]
+    shopping_suggestions: list[ShoppingListItem] = Field(default_factory=list)
+    debug_retrieval: list[RecipeHit] = Field(default_factory=list)
