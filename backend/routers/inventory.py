@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
+from backend.core.config import (
+    RATE_LIMIT_PARSE_TEXT_PER_HOUR,
+    RATE_LIMIT_RECOGNIZE_PER_HOUR,
+)
+from backend.core.rate_limit import rate_limit
 from backend.database import (
     add_manual_shopping_item,
+    add_shopping_items_to_inventory,
     delete_inventory_item,
     list_inventory,
     list_shopping_list_items,
@@ -13,6 +19,8 @@ from backend.database import (
 )
 from backend.schemas.inventory import (
     AddInventoryItemsRequest,
+    AddShoppingItemsToInventoryRequest,
+    AddShoppingItemsToInventoryResponse,
     AddShoppingListItemsRequest,
     InventoryCandidateResponse,
     InventoryItem,
@@ -35,6 +43,16 @@ from backend.services.ingredient_service import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["inventory"])
+parse_inventory_text_rate_limit = rate_limit(
+    "inventory_parse_text",
+    limit=RATE_LIMIT_PARSE_TEXT_PER_HOUR,
+    window_seconds=3600,
+)
+recognize_inventory_rate_limit = rate_limit(
+    "inventory_recognize",
+    limit=RATE_LIMIT_RECOGNIZE_PER_HOUR,
+    window_seconds=3600,
+)
 
 
 def _to_inventory_schema(item: dict) -> InventoryItem:
@@ -46,13 +64,21 @@ async def get_inventory(user_id: str) -> InventoryListResponse:
     return InventoryListResponse(items=[_to_inventory_schema(item) for item in list_inventory(user_id)])
 
 
-@router.post("/inventory/parse-text", response_model=InventoryCandidateResponse)
+@router.post(
+    "/inventory/parse-text",
+    response_model=InventoryCandidateResponse,
+    dependencies=[Depends(parse_inventory_text_rate_limit)],
+)
 async def parse_inventory_text(request: ParseInventoryTextRequest) -> InventoryCandidateResponse:
     items = await enrich_candidates_with_categories(parse_freeform_inventory_text(request.text))
     return InventoryCandidateResponse(items=[_to_inventory_schema(item) for item in items])
 
 
-@router.post("/inventory/recognize", response_model=InventoryCandidateResponse)
+@router.post(
+    "/inventory/recognize",
+    response_model=InventoryCandidateResponse,
+    dependencies=[Depends(recognize_inventory_rate_limit)],
+)
 async def recognize_inventory(
     user_id: str = Query(...),
     source_type: str = Query("image"),
@@ -171,3 +197,18 @@ async def save_shopping_list_items(request: AddShoppingListItemsRequest) -> Shop
     ]
     del saved_items
     return ShoppingListResponse(items=[ShoppingListItem(**item) for item in list_shopping_list_items(request.user_id)])
+
+
+@router.post("/shopping-list/add-to-inventory", response_model=AddShoppingItemsToInventoryResponse)
+async def add_selected_shopping_items_to_inventory(
+    request: AddShoppingItemsToInventoryRequest,
+) -> AddShoppingItemsToInventoryResponse:
+    inventory_items, shopping_items, moved_count = add_shopping_items_to_inventory(
+        request.user_id,
+        item_ids=request.item_ids or None,
+    )
+    return AddShoppingItemsToInventoryResponse(
+        moved_count=moved_count,
+        inventory_items=[_to_inventory_schema(item) for item in inventory_items],
+        shopping_items=[ShoppingListItem(**item) for item in shopping_items],
+    )

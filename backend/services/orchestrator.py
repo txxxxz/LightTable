@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
+import re
 import uuid
 from datetime import datetime, timedelta
 
+from backend.core.config import OPENROUTER_RECIPE_MODEL, OPENROUTER_RECIPE_TIMEOUT_SECONDS
 from backend.database import (
     get_profile,
     list_feedback_events,
@@ -25,8 +29,10 @@ from backend.services.ingredient_service import (
 from backend.services.knowledge_service import get_knowledge_service
 from backend.services.llm_service import chat, is_configured as llm_is_configured
 
+logger = logging.getLogger(__name__)
 
-def _summarize_profile(profile: dict) -> tuple[str, list[str]]:
+
+def _summarize_profile(profile: dict) -> tuple[str, list[str], list[str]]:
     body = profile["profile"]
     preferences = profile["preferences"]
     summary_parts = [
@@ -41,7 +47,17 @@ def _summarize_profile(profile: dict) -> tuple[str, list[str]]:
         summary_parts.append(f"特殊约束：{', '.join(preferences['health_constraints'])}")
     if preferences["flavors"]:
         summary_parts.append(f"口味偏好：{', '.join(preferences['flavors'])}")
-    return "；".join(summary_parts), preferences["health_constraints"]
+    if preferences["methods"]:
+        summary_parts.append(f"偏好做法：{', '.join(preferences['methods'])}")
+    if preferences["cuisines"]:
+        summary_parts.append(f"偏好菜系：{', '.join(preferences['cuisines'])}")
+    summary_parts.append(f"厨艺水平：{preferences['level']}")
+    preference_signals = [
+        *preferences["flavors"],
+        *preferences["methods"],
+        *preferences["cuisines"],
+    ]
+    return "；".join(summary_parts), preferences["health_constraints"], preference_signals
 
 
 def _recent_recipe_ids(user_id: str) -> set[str]:
@@ -58,7 +74,7 @@ def _recent_recipe_ids(user_id: str) -> set[str]:
     return recent_ids
 
 
-def _preference_weights(user_id: str) -> dict[str, float]:
+def _feedback_preference_weights(user_id: str) -> dict[str, float]:
     weights: dict[str, float] = {}
     signal_weight = {
         "view": 0.4,
@@ -81,6 +97,59 @@ def _preference_weights(user_id: str) -> dict[str, float]:
     return weights
 
 
+def _explicit_preference_weights(profile: dict) -> dict[str, float]:
+    preferences = profile["preferences"]
+    weights: dict[str, float] = {}
+
+    def add_weight(key: str, value: float) -> None:
+        weights[key] = weights.get(key, 0.0) + value
+
+    for flavor in preferences["flavors"]:
+        add_weight(flavor, 2.0)
+        if flavor == "高蛋白":
+            add_weight("high_protein", 2.4)
+            add_weight("高蛋白", 1.6)
+        elif flavor == "低碳水":
+            add_weight("low_sugar", 1.8)
+        elif flavor == "清淡":
+            add_weight("清淡", 2.2)
+            add_weight("low_sodium", 1.2)
+        elif flavor == "辣":
+            add_weight("辣", 2.2)
+        elif flavor == "酸甜":
+            add_weight("酸甜", 2.2)
+
+    for method in preferences["methods"]:
+        add_weight(method, 5.0)
+        if method == "快手":
+            add_weight("快手菜", 2.5)
+
+    for cuisine in preferences["cuisines"]:
+        add_weight(cuisine, 2.4)
+
+    level = preferences["level"]
+    if level == "survival":
+        add_weight("A", 2.5)
+        add_weight("快手", 1.5)
+    elif level == "home_cook":
+        add_weight("A", 0.8)
+        add_weight("B", 1.2)
+        add_weight("家常", 1.0)
+    elif level == "chef":
+        add_weight("B", 1.0)
+        add_weight("C", 2.5)
+        add_weight("进阶", 1.6)
+
+    return weights
+
+
+def _preference_weights(user_id: str, profile: dict) -> dict[str, float]:
+    weights = _feedback_preference_weights(user_id)
+    for key, value in _explicit_preference_weights(profile).items():
+        weights[key] = weights.get(key, 0.0) + value
+    return weights
+
+
 def _build_shopping_suggestions(
     hits: list[RecipeHit],
     *,
@@ -88,9 +157,24 @@ def _build_shopping_suggestions(
     household_size: int,
     purchase_frequency_per_week: int,
 ) -> list[ShoppingListItem]:
+    return _build_shopping_suggestions_from_missing_lists(
+        [hit.missing_ingredients for hit in hits[:5]],
+        inventory_empty=inventory_empty,
+        household_size=household_size,
+        purchase_frequency_per_week=purchase_frequency_per_week,
+    )
+
+
+def _build_shopping_suggestions_from_missing_lists(
+    missing_lists: list[list[str]],
+    *,
+    inventory_empty: bool,
+    household_size: int,
+    purchase_frequency_per_week: int,
+) -> list[ShoppingListItem]:
     ingredient_hits: dict[str, dict[str, object]] = {}
-    for hit in hits[:5]:
-        for ingredient in hit.missing_ingredients:
+    for missing_ingredients in missing_lists:
+        for ingredient in missing_ingredients:
             normalized_name = normalize_ingredient_name(ingredient)
             slot = ingredient_hits.setdefault(
                 normalized_name,
@@ -182,16 +266,292 @@ async def _render_reason(
         return f"{plan_label}方案适合当前库存和约束。"
 
 
+def _extract_json_payload(text: str) -> dict:
+    payload = text.strip()
+    if payload.startswith("```"):
+        payload = re.sub(r"^```(?:json)?\s*", "", payload)
+        payload = re.sub(r"\s*```$", "", payload)
+    match = re.search(r"(\{[\s\S]*\})", payload)
+    if match:
+        payload = match.group(1)
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("LLM blueprint is not a dict")
+    return data
+
+
+async def _select_plans_with_llm(
+    *,
+    request_id: str,
+    profile_summary: str,
+    inventory_items: list[dict],
+    health_constraints: list[str],
+    request_tags: list[str],
+    preference_signals: list[str],
+    hits: list[RecipeHit],
+    recipe_payloads: dict[str, dict],
+) -> dict[str, object] | None:
+    if not llm_is_configured():
+        return None
+
+    prompt = (
+        "你是 LightTable 的私人饮食规划与菜谱生成助手。"
+        "请直接基于用户库存、临期状态、特殊约束、时间预算和偏好，生成 2 到 3 组结构化菜谱方案。"
+        "优先消耗临期食材。能直接用现有库存就不要额外补货；缺少的食材要明确写进 missing_ingredients。"
+        "每个方案必须给出完整菜名、食材、步骤、命中库存、缺失食材、原因、标签、难度和时长。"
+        "A 代表更轻量快手，B 代表标准家常，C 代表更完整或稍进阶。"
+        "只返回 JSON 对象，不要 markdown。"
+        '格式：{"strategy_summary":"一句中文总结","plans":[{"plan_id":"A","title":"辣椒炒肉","difficulty":"A","time_minutes":15,"reason":"...","fit_tags":["临期优先"],"tags":["炒","家常"],"ingredients":["五花肉 200g","青椒 2 个"],"core_ingredients":["五花肉","青椒"],"optional_ingredients":["蒜","酱油"],"matched_inventory":["五花肉"],"missing_ingredients":["青椒"],"steps":["..."],"nutrition_tags":["low_sugar"],"allergen_tags":[],"constraint_tags":["dairy_free"]}]}.'
+    )
+    user_message = (
+        f"用户画像：{profile_summary}\n"
+        f"特殊约束：{', '.join(health_constraints) or '无'}\n"
+        f"本次显式诉求：{', '.join(request_tags) or '无'}\n"
+        f"用户偏好信号：{', '.join(preference_signals) or '无'}\n"
+        "当前库存：\n"
+        + json.dumps(
+            [
+                {
+                    "name": item.get("display_name"),
+                    "normalized_name": item.get("normalized_name"),
+                    "quantity_text": item.get("quantity_text"),
+                    "category": item.get("category"),
+                    "status": item.get("status"),
+                }
+                for item in inventory_items
+            ],
+            ensure_ascii=False,
+        )
+    )
+    try:
+        response_text = await asyncio.wait_for(
+            chat(
+                [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                model=OPENROUTER_RECIPE_MODEL,
+            ),
+            timeout=OPENROUTER_RECIPE_TIMEOUT_SECONDS,
+        )
+        payload = _extract_json_payload(response_text)
+    except Exception as exc:
+        logger.warning("LLM recipe planning fell back to rules: %s", exc)
+        return None
+
+    raw_plans = payload.get("plans")
+    if not isinstance(raw_plans, list):
+        return None
+
+    inventory_name_by_token = {
+        item["normalized_name"]: item["display_name"] for item in inventory_items if item.get("normalized_name")
+    }
+    inventory_tokens = set(inventory_name_by_token)
+    generated_plans: list[RecommendationPlan] = []
+    generated_recipes: dict[str, dict[str, object]] = {}
+    legacy_blueprint: list[dict[str, object]] = []
+    plan_map = {"A": "极简", "B": "标准", "C": "进阶"}
+
+    def normalize_list(value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    def to_int(value: object) -> int | None:
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    for item in raw_plans:
+        if not isinstance(item, dict):
+            continue
+        plan_id = str(item.get("plan_id") or "").strip().upper()
+        if plan_id not in {"A", "B", "C"}:
+            continue
+
+        title = str(item.get("title") or item.get("name") or "").strip()
+        ingredients = normalize_list(item.get("ingredients"))
+        steps = normalize_list(item.get("steps"))
+        if not title or not ingredients or not steps:
+            if item.get("recipe_id"):
+                legacy_blueprint.append(item)
+            continue
+
+        core_ingredients = normalize_list(item.get("core_ingredients"))
+        optional_ingredients = normalize_list(item.get("optional_ingredients"))
+        matched_inventory = normalize_list(item.get("matched_inventory"))
+        missing_ingredients = normalize_list(item.get("missing_ingredients"))
+
+        if not core_ingredients:
+            core_ingredients = matched_inventory + missing_ingredients
+        if not core_ingredients:
+            core_ingredients = [part.split(" ")[0] for part in ingredients[:3] if str(part).strip()]
+
+        if not matched_inventory or not missing_ingredients:
+            derived_matched: list[str] = []
+            derived_missing: list[str] = []
+            for ingredient_name in core_ingredients:
+                token = normalize_ingredient_name(ingredient_name)
+                if token in inventory_tokens:
+                    derived_matched.append(inventory_name_by_token[token])
+                else:
+                    derived_missing.append(get_default_display_name(token, ingredient_name))
+            matched_inventory = matched_inventory or derived_matched
+            missing_ingredients = missing_ingredients or derived_missing
+
+        recipe_id = f"gen_{request_id}_{plan_id.lower()}"
+        difficulty = str(item.get("difficulty") or plan_id).strip().upper() or plan_id
+        detail = {
+            "id": recipe_id,
+            "name": title,
+            "ingredients": ingredients,
+            "core_ingredients": core_ingredients,
+            "optional_ingredients": optional_ingredients,
+            "steps": steps,
+            "tags": normalize_list(item.get("tags")),
+            "time_minutes": to_int(item.get("time_minutes")),
+            "difficulty": difficulty if difficulty in {"A", "B", "C"} else plan_id,
+            "nutrition_tags": normalize_list(item.get("nutrition_tags")),
+            "allergen_tags": normalize_list(item.get("allergen_tags")),
+            "constraint_tags": normalize_list(item.get("constraint_tags")),
+            "matched_inventory": matched_inventory,
+            "missing_ingredients": missing_ingredients,
+        }
+        generated_recipes[recipe_id] = detail
+        generated_plans.append(
+            RecommendationPlan(
+                plan_id=plan_id,
+                label=plan_map[plan_id],
+                dishes=[PlanDish(recipe_id=recipe_id, title=title)],
+                matched_inventory=matched_inventory,
+                missing_ingredients=missing_ingredients,
+                time_minutes=detail["time_minutes"],
+                difficulty=detail["difficulty"],
+                fit_tags=normalize_list(item.get("fit_tags")),
+                reason=str(item.get("reason") or "").strip() or f"{title} 更贴合当前库存和约束。",
+            )
+        )
+
+    if generated_plans:
+        return {
+            "mode": "generated",
+            "plans": generated_plans,
+            "generated_recipes": generated_recipes,
+            "strategy_summary": str(payload.get("strategy_summary") or "").strip() or None,
+        }
+    if legacy_blueprint:
+        return {
+            "mode": "selection",
+            "plans": legacy_blueprint,
+            "generated_recipes": {},
+            "strategy_summary": str(payload.get("strategy_summary") or "").strip() or None,
+        }
+    return None
+
+
+async def _build_plan_from_hit(
+    *,
+    hit: RecipeHit,
+    plan_id: str,
+    reason: str | None,
+    fit_tags: list[str] | None,
+    profile_summary: str,
+    plan_map: dict[str, str],
+) -> RecommendationPlan:
+    label = plan_map.get(plan_id, "补充")
+    rendered_reason = (reason or "").strip() or await _render_reason(
+        profile_summary=profile_summary,
+        hit=hit,
+        plan_label=label,
+    )
+    return RecommendationPlan(
+        plan_id=plan_id,
+        label=label,
+        dishes=[PlanDish(recipe_id=hit.recipe_id, title=hit.title)],
+        matched_inventory=hit.matched_ingredients,
+        missing_ingredients=hit.missing_ingredients,
+        time_minutes=hit.time_minutes,
+        difficulty=hit.difficulty,
+        fit_tags=fit_tags or hit.fit_tags,
+        reason=rendered_reason,
+    )
+
+
+async def _fallback_plan_build(
+    *,
+    hits: list[RecipeHit],
+    profile_summary: str,
+    existing_plan_ids: set[str] | None = None,
+    existing_recipe_ids: set[str] | None = None,
+) -> list[RecommendationPlan]:
+    plan_map = {"A": "极简", "B": "标准", "C": "进阶"}
+    plans: list[RecommendationPlan] = []
+    selected_difficulties = set(existing_plan_ids or set())
+    selected_recipe_ids = set(existing_recipe_ids or set())
+
+    for target_difficulty in ("A", "B", "C"):
+        if target_difficulty in selected_difficulties:
+            continue
+        hit = next(
+            (
+                candidate
+                for candidate in hits
+                if candidate.difficulty == target_difficulty and candidate.recipe_id not in selected_recipe_ids
+            ),
+            None,
+        )
+        if hit is None:
+            continue
+        plans.append(
+            await _build_plan_from_hit(
+                hit=hit,
+                plan_id=target_difficulty,
+                reason=None,
+                fit_tags=None,
+                profile_summary=profile_summary,
+                plan_map=plan_map,
+            )
+        )
+        selected_difficulties.add(target_difficulty)
+        selected_recipe_ids.add(hit.recipe_id)
+
+    if len(plans) + len(existing_plan_ids or set()) < 2:
+        for hit in hits:
+            if hit.recipe_id in selected_recipe_ids:
+                continue
+            plan_id = hit.difficulty
+            plans.append(
+                await _build_plan_from_hit(
+                    hit=hit,
+                    plan_id=plan_id,
+                    reason=None,
+                    fit_tags=None,
+                    profile_summary=profile_summary,
+                    plan_map=plan_map,
+                )
+            )
+            selected_recipe_ids.add(hit.recipe_id)
+            if len(plans) + len(existing_plan_ids or set()) >= 3:
+                break
+    return plans
+
+
 async def recommend(request: RecommendRequest) -> RecommendResponse:
     request_id = f"req_{uuid.uuid4().hex[:8]}"
     inventory_items = list_inventory(request.user_id)
     inventory_tokens = [item["normalized_name"] for item in inventory_items]
+    expiring_inventory_tokens = {
+        item["normalized_name"] for item in inventory_items if item.get("status") == "expiring_soon"
+    }
     profile = get_profile(request.user_id)
 
     if profile is None:
         raise ValueError("User profile not found")
 
-    profile_summary, health_constraints = _summarize_profile(profile)
+    profile_summary, health_constraints, preference_signals = _summarize_profile(profile)
     household_size = int(profile["profile"].get("household_size") or 1)
     purchase_frequency_per_week = int(profile["profile"].get("purchase_frequency_per_week") or 2)
     time_budget = int(
@@ -199,73 +559,94 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
         or profile["profile"]["time_budget_minutes"]
         or 20
     )
-    preference_weights = _preference_weights(request.user_id)
+    preference_weights = _preference_weights(request.user_id, profile)
     recent_recipe_ids = _recent_recipe_ids(request.user_id)
 
-    knowledge = get_knowledge_service()
-    hits = knowledge.list_candidate_hits(
-        inventory_tokens=inventory_tokens,
-        constraints=health_constraints,
-        goal=profile["profile"]["goal"],
-        explicit_tags=request.tags,
-        time_budget_minutes=time_budget,
-        preference_weights=preference_weights,
-        recent_recipe_ids=recent_recipe_ids,
-    )
-
-    plan_map = {"A": "极简", "B": "标准", "C": "进阶"}
     plans: list[RecommendationPlan] = []
-    selected_difficulties: set[str] = set()
-    for target_difficulty in ("A", "B", "C"):
-        hit = next((candidate for candidate in hits if candidate.difficulty == target_difficulty), None)
-        if hit is None:
-            continue
-        selected_difficulties.add(hit.difficulty)
-        label = plan_map[target_difficulty]
-        reason = await _render_reason(profile_summary=profile_summary, hit=hit, plan_label=label)
-        plans.append(
-            RecommendationPlan(
-                plan_id=target_difficulty,
-                label=label,
-                dishes=[PlanDish(recipe_id=hit.recipe_id, title=hit.title)],
-                matched_inventory=hit.matched_ingredients,
-                missing_ingredients=hit.missing_ingredients,
-                time_minutes=hit.time_minutes,
-                difficulty=hit.difficulty,
-                fit_tags=hit.fit_tags,
-                reason=reason,
+    generated_recipes: dict[str, dict[str, object]] = {}
+    selected_plan_ids: set[str] = set()
+    selected_recipe_ids: set[str] = set()
+    llm_strategy_summary: str | None = None
+    hits: list[RecipeHit] = []
+
+    llm_selection = await _select_plans_with_llm(
+        request_id=request_id,
+        profile_summary=profile_summary,
+        inventory_items=inventory_items,
+        health_constraints=health_constraints,
+        request_tags=request.tags,
+        preference_signals=preference_signals,
+        hits=[],
+        recipe_payloads={},
+    )
+    if llm_selection and llm_selection.get("mode") == "generated":
+        plans = list(llm_selection.get("plans") or [])
+        generated_recipes = dict(llm_selection.get("generated_recipes") or {})
+        llm_strategy_summary = llm_selection.get("strategy_summary")  # type: ignore[assignment]
+    else:
+        knowledge = get_knowledge_service()
+        recipe_payloads = {recipe["id"]: recipe for recipe in knowledge.recipes}
+        hits = knowledge.list_candidate_hits(
+            inventory_tokens=inventory_tokens,
+            expiring_inventory_tokens=expiring_inventory_tokens,
+            constraints=health_constraints,
+            goal=profile["profile"]["goal"],
+            explicit_tags=request.tags,
+            time_budget_minutes=time_budget,
+            preference_weights=preference_weights,
+            recent_recipe_ids=recent_recipe_ids,
+        )
+        candidate_map = {hit.recipe_id: hit for hit in hits}
+        if llm_selection and llm_selection.get("mode") == "selection":
+            blueprint = llm_selection.get("plans") or []
+            llm_strategy_summary = llm_selection.get("strategy_summary")  # type: ignore[assignment]
+        else:
+            blueprint = []
+
+        for item in blueprint:
+            plan_id = str(item.get("plan_id") or "").strip()
+            recipe_id = str(item.get("recipe_id") or "").strip()
+            if plan_id not in {"A", "B", "C"}:
+                continue
+            hit = candidate_map.get(recipe_id)
+            if hit is None or recipe_id in selected_recipe_ids:
+                continue
+            plan = await _build_plan_from_hit(
+                hit=hit,
+                plan_id=plan_id,
+                reason=str(item.get("reason") or "").strip() or None,
+                fit_tags=[str(tag) for tag in item.get("fit_tags", []) if isinstance(tag, str)] or None,
+                profile_summary=profile_summary,
+                plan_map={"A": "极简", "B": "标准", "C": "进阶"},
+            )
+            plans.append(plan)
+            selected_plan_ids.add(plan_id)
+            selected_recipe_ids.add(recipe_id)
+
+        plans.extend(
+            await _fallback_plan_build(
+                hits=hits,
+                profile_summary=profile_summary,
+                existing_plan_ids=selected_plan_ids,
+                existing_recipe_ids=selected_recipe_ids,
             )
         )
 
-    if len(plans) < 2:
-        for hit in hits:
-            if hit.difficulty in selected_difficulties:
-                continue
-            label = plan_map.get(hit.difficulty, "补充")
-            reason = await _render_reason(profile_summary=profile_summary, hit=hit, plan_label=label)
-            plans.append(
-                RecommendationPlan(
-                    plan_id=hit.difficulty,
-                    label=label,
-                    dishes=[PlanDish(recipe_id=hit.recipe_id, title=hit.title)],
-                    matched_inventory=hit.matched_ingredients,
-                    missing_ingredients=hit.missing_ingredients,
-                    time_minutes=hit.time_minutes,
-                    difficulty=hit.difficulty,
-                    fit_tags=hit.fit_tags,
-                    reason=reason,
-                )
-            )
-            if len(plans) >= 3:
-                break
-
     inventory_empty = not inventory_items
-    shopping_suggestions = _build_shopping_suggestions(
-        hits,
-        inventory_empty=inventory_empty,
-        household_size=household_size,
-        purchase_frequency_per_week=purchase_frequency_per_week,
-    )
+    if generated_recipes:
+        shopping_suggestions = _build_shopping_suggestions_from_missing_lists(
+            [plan.missing_ingredients for plan in plans],
+            inventory_empty=inventory_empty,
+            household_size=household_size,
+            purchase_frequency_per_week=purchase_frequency_per_week,
+        )
+    else:
+        shopping_suggestions = _build_shopping_suggestions(
+            hits,
+            inventory_empty=inventory_empty,
+            household_size=household_size,
+            purchase_frequency_per_week=purchase_frequency_per_week,
+        )
     replace_shopping_list_items(
         request.user_id,
         [
@@ -290,6 +671,7 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
         {
             "request_id": request_id,
             "plans": [plan.model_dump() for plan in plans],
+            "generated_recipes": generated_recipes,
             "tags": request.tags,
         },
     )
@@ -299,12 +681,14 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
         "特殊约束已过滤" if health_constraints else "通用饮食规则",
         f"时间预算 {time_budget} 分钟",
     ]
+    if preference_signals:
+        strategy_parts.append(f"偏好加权 {', '.join(preference_signals[:3])}")
 
     return RecommendResponse(
         request_id=request_id,
         profile_summary=profile_summary,
-        strategy_summary="，".join(strategy_parts),
+        strategy_summary=llm_strategy_summary or "，".join(strategy_parts),
         plans=plans,
         shopping_suggestions=shopping_suggestions,
-        debug_retrieval=hits[:8],
+        debug_retrieval=hits[:8] if not generated_recipes else [],
     )

@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import type { CookingLevel, Goal } from "./types";
+import type { CookingLevel, Goal, RecommendationPlan, ShoppingListItem } from "./types";
 
 export interface DebugLog {
   id: string;
@@ -12,14 +12,27 @@ export interface DebugLog {
   message: string;
 }
 
+export interface RecommendationSnapshot {
+  requestId: string;
+  selectedTags: string[];
+  profileSummary: string;
+  strategySummary: string;
+  plans: RecommendationPlan[];
+  shoppingSuggestions: ShoppingListItem[];
+}
+
 interface GlobalStore {
   system: {
     debugMode: boolean;
   };
   debugLogs: DebugLog[];
+  currentRecommendationId: string | null;
+  recommendationSnapshots: Record<string, RecommendationSnapshot>;
   setDebugMode: (enabled: boolean) => void;
   addDebugLog: (type: DebugLog["type"], message: string) => void;
   clearDebugLogs: () => void;
+  setLastRecommendation: (snapshot: RecommendationSnapshot) => void;
+  clearLastRecommendation: () => void;
 }
 
 export const useGlobalStore = create<GlobalStore>()(
@@ -29,6 +42,8 @@ export const useGlobalStore = create<GlobalStore>()(
         debugMode: false,
       },
       debugLogs: [],
+      currentRecommendationId: null,
+      recommendationSnapshots: {},
       setDebugMode: (enabled) =>
         set((state) => ({
           system: { ...state.system, debugMode: enabled },
@@ -46,11 +61,28 @@ export const useGlobalStore = create<GlobalStore>()(
           ],
         })),
       clearDebugLogs: () => set({ debugLogs: [] }),
+      setLastRecommendation: (snapshot) =>
+        set((state) => ({
+          currentRecommendationId: snapshot.requestId,
+          recommendationSnapshots: {
+            ...Object.fromEntries(
+              Object.entries(state.recommendationSnapshots).slice(-4)
+            ),
+            [snapshot.requestId]: snapshot,
+          },
+        })),
+      clearLastRecommendation: () =>
+        set({
+          currentRecommendationId: null,
+          recommendationSnapshots: {},
+        }),
     }),
     {
       name: "lighttable-debug",
       partialize: (state) => ({
         system: state.system,
+        currentRecommendationId: state.currentRecommendationId,
+        recommendationSnapshots: state.recommendationSnapshots,
       }),
     }
   )

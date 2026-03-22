@@ -11,6 +11,7 @@ from backend.core.config import (
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     OPENROUTER_MODEL,
+    OPENROUTER_RECIPE_MODEL,
     has_openrouter,
 )
 
@@ -23,12 +24,13 @@ async def chat(messages: list[dict[str, str]], *, model: str | None = None) -> s
     if not has_openrouter():
         return "（未配置 OPENROUTER_API_KEY，无法调用 LLM）"
 
+    effective_model = model or OPENROUTER_MODEL
     url = f"{OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
     payload = {
-        "model": model or OPENROUTER_MODEL,
+        "model": effective_model,
         "messages": messages,
-        "max_tokens": 1024,
-        "temperature": 0.7,
+        "max_tokens": 2200 if effective_model == OPENROUTER_RECIPE_MODEL else 1024,
+        "temperature": 0.4 if effective_model == OPENROUTER_RECIPE_MODEL else 0.7,
     }
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -36,7 +38,7 @@ async def chat(messages: list[dict[str, str]], *, model: str | None = None) -> s
         "HTTP-Referer": "https://lighttable.local",
     }
 
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    async with httpx.AsyncClient(timeout=12.0 if effective_model == OPENROUTER_RECIPE_MODEL else 5.0) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()

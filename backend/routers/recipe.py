@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from backend.database import (
     delete_inventory_item,
+    get_generated_recipe,
     list_inventory,
     record_feedback_event,
     replace_shopping_list_items,
@@ -12,7 +13,7 @@ from backend.database import (
 from backend.schemas.feedback import RecipeCompletionRequest
 from backend.schemas.inventory import ShoppingListItem
 from backend.schemas.recipe import RecipeDetail, VideoReference
-from backend.services.ingredient_service import get_default_category
+from backend.services.ingredient_service import get_default_category, normalize_ingredient_name
 from backend.services.knowledge_service import get_knowledge_service
 from backend.services.video_reference_service import get_video_reference_service
 
@@ -21,6 +22,17 @@ router = APIRouter(prefix="/api/v1/recipe", tags=["recipe"])
 
 @router.get("/{recipe_id}", response_model=RecipeDetail)
 async def get_recipe(recipe_id: str, user_id: str = Query("default")) -> RecipeDetail:
+    generated_recipe = get_generated_recipe(user_id, recipe_id)
+    if generated_recipe is not None:
+        recipe = RecipeDetail(**generated_recipe)
+        video_reference = get_video_reference_service().get_video_reference(recipe.name)
+        return RecipeDetail(
+            **{
+                **recipe.model_dump(),
+                "video_reference": VideoReference(**video_reference.__dict__).model_dump(),
+            }
+        )
+
     knowledge = get_knowledge_service()
     base_recipe = knowledge.get_recipe_by_id(recipe_id)
     if base_recipe is None:
@@ -38,27 +50,37 @@ async def get_recipe(recipe_id: str, user_id: str = Query("default")) -> RecipeD
 
 
 @router.get("/{recipe_id}/video-reference", response_model=VideoReference)
-async def get_recipe_video_reference(recipe_id: str) -> VideoReference:
+async def get_recipe_video_reference(recipe_id: str, user_id: str = Query("default")) -> VideoReference:
     knowledge = get_knowledge_service()
     recipe = knowledge.get_recipe_by_id(recipe_id)
-    if recipe is None:
+    recipe_name = recipe.name if recipe is not None else None
+    if recipe_name is None:
+        generated_recipe = get_generated_recipe(user_id, recipe_id)
+        if generated_recipe is not None:
+            recipe_name = str(generated_recipe.get("name") or "")
+    if not recipe_name:
         raise HTTPException(status_code=404, detail="Recipe not found")
-    result = get_video_reference_service().get_video_reference(recipe.name)
+    result = get_video_reference_service().get_video_reference(recipe_name)
     return VideoReference(**result.__dict__)
 
 
 @router.post("/{recipe_id}/complete")
 async def complete_recipe(recipe_id: str, request: RecipeCompletionRequest) -> dict:
-    knowledge = get_knowledge_service()
     inventory = list_inventory(request.user_id)
     inventory_by_name = {item["normalized_name"]: item for item in inventory}
-    recipe = knowledge.get_recipe_by_id(recipe_id, inventory_tokens=list(inventory_by_name))
-    if recipe is None:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+    generated_recipe = get_generated_recipe(request.user_id, recipe_id)
+    if generated_recipe is not None:
+        recipe = RecipeDetail(**generated_recipe)
+    else:
+        knowledge = get_knowledge_service()
+        recipe = knowledge.get_recipe_by_id(recipe_id, inventory_tokens=list(inventory_by_name))
+        if recipe is None:
+            raise HTTPException(status_code=404, detail="Recipe not found")
 
-    for token in recipe.matched_inventory:
+    for matched_name in recipe.matched_inventory:
+        normalized_matched_name = normalize_ingredient_name(matched_name)
         for item in inventory:
-            if item["display_name"] != token:
+            if item["normalized_name"] != normalized_matched_name:
                 continue
             if request.usage_mode == "all":
                 delete_inventory_item(request.user_id, item["id"])

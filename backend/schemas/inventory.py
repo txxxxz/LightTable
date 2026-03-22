@@ -120,3 +120,14 @@ class AddShoppingListItemsRequest(BaseModel):
 
 class ShoppingListUpdateRequest(BaseModel):
     checked: bool
+
+
+class AddShoppingItemsToInventoryRequest(BaseModel):
+    user_id: str
+    item_ids: list[str] = Field(default_factory=list)
+
+
+class AddShoppingItemsToInventoryResponse(BaseModel):
+    moved_count: int
+    inventory_items: list[InventoryItem]
+    shopping_items: list[ShoppingListItem]

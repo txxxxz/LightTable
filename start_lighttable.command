@@ -10,6 +10,7 @@ FRONTEND_LOG="$LOG_DIR/frontend.log"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 API_BASE="${NEXT_PUBLIC_API_BASE:-http://localhost:$BACKEND_PORT}"
+RESET_FRONTEND_CACHE="${RESET_FRONTEND_CACHE:-0}"
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -68,6 +69,35 @@ wait_for_port() {
   return 1
 }
 
+refresh_next_dev_artifacts() {
+  local next_dir="$ROOT_DIR/frontend/.next"
+
+  if [ ! -d "$next_dir" ]; then
+    return 0
+  fi
+
+  echo "Refreshing frontend dev artifacts while keeping compiler cache..."
+  rm -rf \
+    "$next_dir/server" \
+    "$next_dir/static" \
+    "$next_dir/types" \
+    "$next_dir/diagnostics"
+  rm -f \
+    "$next_dir/BUILD_ID" \
+    "$next_dir/app-build-manifest.json" \
+    "$next_dir/app-path-routes-manifest.json" \
+    "$next_dir/build-manifest.json" \
+    "$next_dir/export-marker.json" \
+    "$next_dir/images-manifest.json" \
+    "$next_dir/middleware-manifest.json" \
+    "$next_dir/package.json" \
+    "$next_dir/pages-manifest.json" \
+    "$next_dir/prerender-manifest.json" \
+    "$next_dir/react-loadable-manifest.json" \
+    "$next_dir/required-server-files.json" \
+    "$next_dir/routes-manifest.json"
+}
+
 cleanup() {
   trap - EXIT INT TERM
 
@@ -123,8 +153,12 @@ check_port_free "$FRONTEND_PORT" "Frontend"
 : >"$BACKEND_LOG"
 : >"$FRONTEND_LOG"
 
-echo "Resetting frontend dev cache..."
-rm -rf "$ROOT_DIR/frontend/.next"
+if [ "$RESET_FRONTEND_CACHE" = "1" ]; then
+  echo "Resetting frontend dev cache..."
+  rm -rf "$ROOT_DIR/frontend/.next"
+else
+  refresh_next_dev_artifacts
+fi
 
 echo "Starting backend on port $BACKEND_PORT..."
 (

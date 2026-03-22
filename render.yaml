@@ -1,0 +1,68 @@
+services:
+  - type: pserv
+    runtime: python
+    name: lighttable-backend
+    rootDir: .
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/status
+    buildFilter:
+      paths:
+        - backend/**
+        - requirements.txt
+        - render.yaml
+      ignoredPaths:
+        - frontend/**
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: MEM0_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-4o-mini
+      - key: OPENROUTER_RECIPE_MODEL
+        value: openai/gpt-4o
+      - key: LIGHTTABLE_DATA_DIR
+        value: /var/data/lighttable
+      - key: LIGHTTABLE_CORS_ALLOW_ORIGINS
+        value: http://localhost:3000,http://127.0.0.1:3000
+      - key: LIGHTTABLE_RATE_LIMIT_RECOMMEND_PER_HOUR
+        value: "30"
+      - key: LIGHTTABLE_RATE_LIMIT_RECOGNIZE_PER_HOUR
+        value: "12"
+      - key: LIGHTTABLE_RATE_LIMIT_PARSE_TEXT_PER_HOUR
+        value: "120"
+      - key: LIGHTTABLE_RATE_LIMIT_LLM_TEST_PER_HOUR
+        value: "5"
+    disk:
+      name: lighttable-data
+      mountPath: /var/data/lighttable
+      sizeGB: 1
+
+  - type: web
+    runtime: node
+    name: lighttable-frontend
+    rootDir: frontend
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    buildFilter:
+      paths:
+        - frontend/**
+        - render.yaml
+      ignoredPaths:
+        - backend/**
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: BACKEND_INTERNAL_HOSTPORT
+        fromService:
+          type: pserv
+          name: lighttable-backend
+          property: hostport

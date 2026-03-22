@@ -205,5 +205,24 @@
     "nutrition_tags": ["low_sugar", "dairy_free"],
     "allergen_tags": ["shellfish"],
     "constraint_tags": ["dairy_free"]
+  },
+  {
+    "id": "r_012",
+    "name": "辣椒炒肉",
+    "ingredients": ["五花肉 200g", "青椒或辣椒 2 个", "蒜 2 瓣", "酱油 1 勺", "料酒 少许"],
+    "core_ingredients": ["五花肉", "酱油"],
+    "optional_ingredients": ["青椒", "辣椒", "蒜", "料酒"],
+    "steps": [
+      "五花肉切薄片，少量料酒和酱油抓匀。",
+      "青椒或辣椒切段，蒜切片备用。",
+      "热锅下五花肉煸到微微出油。",
+      "加入蒜片和辣椒快速翻炒，最后补一点酱油调味即可。"
+    ],
+    "tags": ["炒", "家常", "下饭", "快手"],
+    "time_minutes": 15,
+    "difficulty": "A",
+    "nutrition_tags": ["low_sugar", "dairy_free"],
+    "allergen_tags": [],
+    "constraint_tags": ["dairy_free"]
   }
 ]

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+import httpx
+
 from backend.services.llm_service import (
+    chat,
     is_configured as llm_is_configured,
     vision_chat,
 )
@@ -85,6 +89,7 @@ CATALOG: tuple[IngredientCatalogEntry, ...] = (
     IngredientCatalogEntry("spinach", "菠菜", "vegetables_tofu", "fridge", 3, ("菠菜",), "把"),
     IngredientCatalogEntry("cabbage", "卷心菜", "vegetables_tofu", "fridge", 5, ("卷心菜", "圆白菜", "包菜"), "颗"),
     IngredientCatalogEntry("mango", "芒果", "fruit_snacks", "fridge", 5, ("芒果",), "个"),
+    IngredientCatalogEntry("hami_melon", "哈密瓜", "fruit_snacks", "fridge", 5, ("哈密瓜", "蜜瓜"), "个"),
     IngredientCatalogEntry("oats", "燕麦", "dry_goods", "pantry", 30, ("燕麦", "燕麦片"), "袋"),
     IngredientCatalogEntry("yogurt", "酸奶", "dairy", "fridge", 7, ("酸奶", "希腊酸奶"), "盒"),
     IngredientCatalogEntry("scallion", "葱", "pantry_condiments", "fridge", 5, ("葱", "小葱", "香葱"), "把"),
@@ -161,7 +166,7 @@ TRAILING_NOISE_PATTERN = re.compile(r"(?:还有|和|及|等|吧|呀)+$")
 
 
 class ImageRecognitionError(Exception):
-    def __init__(self, detail: str, *, status_code: int = 422) -> None:
+    def __init__(self, detail: str, status_code: int = 422) -> None:
         super().__init__(detail)
         self.detail = detail
         self.status_code = status_code
@@ -207,7 +212,7 @@ def get_default_category(token: str, fallback: str | None = None) -> str:
     for category, keywords in CATEGORY_KEYWORDS:
         if any(keyword in probe for keyword in keywords):
             return category
-    return "other"
+    return "dry_goods"
 
 
 def ensure_category_key(
@@ -223,7 +228,7 @@ def ensure_category_key(
         if cleaned in CATEGORY_LABEL_TO_KEY:
             return CATEGORY_LABEL_TO_KEY[cleaned]
     token = normalized_name or normalize_ingredient_name(raw_name or "")
-    return get_default_category(token)
+    return get_default_category(token, raw_name or token)
 
 
 def estimate_expiry_date(token: str, *, storage_type: str, date_added: date) -> date:
@@ -322,26 +327,26 @@ def suggest_recommended_quantity_text(
     household_size: int,
     purchase_frequency_per_week: int,
 ) -> str:
-    del display_name, category
-
     entry = get_catalog_entry(normalized_name)
-    unit = entry.shopping_unit if entry else "份"
+    safe_category = ensure_category_key(category, raw_name=display_name, normalized_name=normalized_name)
+    unit = entry.shopping_unit if entry else {
+        "pantry_condiments": "瓶",
+        "dry_goods": "袋",
+        "baking_dairy": "袋",
+        "beverages": "瓶",
+        "dairy": "盒",
+        "fruit_snacks": "份",
+    }.get(safe_category, "份")
 
-    amount = max(1.0, float(missing_count))
-    if household_size >= 3:
-        amount *= 1.5
-    if household_size >= 5:
-        amount *= 1.5
-    if purchase_frequency_per_week <= 1:
-        amount *= 1.5
-    elif purchase_frequency_per_week >= 4:
-        amount *= 0.75
+    if safe_category == "pantry_condiments":
+        if unit not in {"瓶", "袋", "盒"}:
+            unit = "瓶"
+        return f"1{unit}"
 
-    if unit in {"瓶", "袋", "盒", "罐"}:
-        amount = max(1.0, round(amount))
-    else:
-        amount = max(1.0, round(amount * 2) / 2)
-    return format_quantity(amount, unit)
+    coverage_days = math.ceil(7 / max(1, min(4, int(purchase_frequency_per_week or 2))))
+    demand = max(1, int(missing_count)) * max(1, int(household_size)) * max(1, coverage_days)
+    divisor = 7 if safe_category in {"dairy", "vegetables_tofu", "meat_poultry_eggs", "seafood", "fruit_snacks"} else 4
+    return f"{max(1, math.ceil(demand / divisor))}{unit}"
 
 
 def build_inventory_candidate(
@@ -402,36 +407,13 @@ def _build_candidates_from_fragment(fragment: str, *, quantity_text: str) -> lis
     cleaned = _clean_fragment(fragment)
     if not cleaned:
         return []
-    return [build_inventory_candidate(cleaned, quantity_text=quantity_text, source_type="manual_text")]
-
-
-def _parse_segment(segment: str) -> list[dict[str, str]]:
-    cleaned = _clean_fragment(segment)
-    if not cleaned:
-        return []
-
     parts = [part for part in (piece.strip() for piece in CONNECTOR_SPLIT_PATTERN.split(cleaned)) if part]
     if len(parts) > 1:
         results: list[dict[str, str]] = []
         for part in parts:
-            results.extend(_parse_segment(part))
+            results.extend(_build_candidates_from_fragment(part, quantity_text=quantity_text))
         return results
-
-    prefix_match = PREFIX_QUANTITY_PATTERN.match(cleaned)
-    if prefix_match:
-        return _build_candidates_from_fragment(
-            prefix_match.group(2),
-            quantity_text=prefix_match.group(1).replace(" ", ""),
-        )
-
-    suffix_match = SUFFIX_QUANTITY_PATTERN.match(cleaned)
-    if suffix_match:
-        return _build_candidates_from_fragment(
-            suffix_match.group(1),
-            quantity_text=suffix_match.group(2).replace(" ", ""),
-        )
-
-    return _build_candidates_from_fragment(cleaned, quantity_text=extract_quantity(cleaned))
+    return [build_inventory_candidate(cleaned, quantity_text=quantity_text, source_type="manual_text")]
 
 
 def parse_freeform_inventory_text(text: str) -> list[dict[str, str]]:
@@ -445,7 +427,24 @@ def parse_freeform_inventory_text(text: str) -> list[dict[str, str]]:
         segments = [cleaned]
 
     for segment in segments:
-        raw_hits.extend(_parse_segment(segment))
+        quantity_matches = list(QUANTITY_PATTERN.finditer(segment))
+        if not quantity_matches:
+            raw_hits.extend(_build_candidates_from_fragment(segment, quantity_text="1份"))
+            continue
+
+        prefix = segment[: quantity_matches[0].start()]
+        raw_hits.extend(_build_candidates_from_fragment(prefix, quantity_text="1份"))
+
+        for index, match in enumerate(quantity_matches):
+            quantity_text = match.group(1).replace(" ", "")
+            chunk_start = match.end()
+            chunk_end = (
+                quantity_matches[index + 1].start()
+                if index + 1 < len(quantity_matches)
+                else len(segment)
+            )
+            chunk = segment[chunk_start:chunk_end]
+            raw_hits.extend(_build_candidates_from_fragment(chunk, quantity_text=quantity_text))
 
     return merge_inventory_candidates(raw_hits)
 
@@ -463,6 +462,45 @@ async def enrich_candidates_with_categories(candidates: list[dict[str, str]]) ->
         )
         item["display_name"] = item.get("display_name") or get_default_display_name(token, token)
         enriched.append(item)
+
+    llm_targets = [
+        item for item in enriched
+        if item["normalized_name"] not in CATALOG_BY_TOKEN and item["category"] == "dry_goods"
+    ]
+    if not llm_targets or not llm_is_configured():
+        return enriched
+
+    prompt = (
+        "你是 LightTable 食材分类助手。"
+        "请把每个食材归入下面 10 个分类 key 之一，只返回 JSON 数组。"
+        "可选 key：dairy, vegetables_tofu, meat_poultry_eggs, seafood, pantry_condiments, "
+        "dry_goods, baking_dairy, ready_meals, beverages, fruit_snacks。"
+        '输出格式：[{"name":"哈密瓜","category":"fruit_snacks"}]。'
+        "不要解释，不要输出 markdown。"
+    )
+    user_message = "\n".join(item["display_name"] for item in llm_targets)
+    try:
+        response_text = await chat(
+            [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user_message},
+            ]
+        )
+        payload = _extract_json_payload(response_text)
+        category_map = {
+            normalize_display_name(str(entry.get("name") or entry.get("display_name") or "")): ensure_category_key(
+                str(entry.get("category") or "").strip() or None
+            )
+            for entry in payload
+            if str(entry.get("name") or entry.get("display_name") or "").strip()
+        }
+    except Exception:
+        return enriched
+
+    for item in enriched:
+        llm_category = category_map.get(normalize_display_name(item["display_name"]))
+        if llm_category:
+            item["category"] = llm_category
     return enriched
 
 
@@ -497,18 +535,36 @@ async def recognize_from_uploaded_file(
     if not file_bytes:
         raise ImageRecognitionError("上传文件为空。")
     if not llm_is_configured():
-        raise RuntimeError("OPENROUTER_API_KEY 未配置，无法执行图片识别。")
+        raise ImageRecognitionError("未配置图片识别模型", 503)
 
     prompt = (
         "请识别图片里的食材或购物清单，只返回 JSON 数组。"
         "每个元素包含 display_name、quantity_text、category、storage_type。"
         "category 使用英文 key；storage_type 仅能是 fridge/freezer/pantry。"
     )
-    response_text = await vision_chat(prompt, image_bytes=file_bytes, filename=filename)
+    try:
+        response_text = await vision_chat(prompt, image_bytes=file_bytes, filename=filename)
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        if status_code in {401, 403}:
+            raise ImageRecognitionError("模型鉴权失败", status_code) from exc
+        if status_code == 429:
+            raise ImageRecognitionError("图片识别限流，请稍后重试", status_code) from exc
+        raise ImageRecognitionError("图片识别服务暂时不可用", 503) from exc
+    except (httpx.TimeoutException, httpx.NetworkError, httpx.RequestError, RuntimeError) as exc:
+        message = str(exc)
+        if "OPENROUTER_API_KEY" in message:
+            raise ImageRecognitionError("未配置图片识别模型", 503) from exc
+        raise ImageRecognitionError("图片识别服务暂时不可用", 503) from exc
+    except Exception as exc:
+        raise ImageRecognitionError("图片识别服务暂时不可用", 503) from exc
+
+    if not response_text.strip():
+        raise ImageRecognitionError("图片识别结果不可解析，请换一张更清晰的图片", 502)
     try:
         payload = _extract_json_payload(response_text)
     except (json.JSONDecodeError, ValueError) as exc:
-        raise ImageRecognitionError(f"无法解析识别结果: {exc}") from exc
+        raise ImageRecognitionError("图片识别结果不可解析，请换一张更清晰的图片", 502) from exc
 
     results: list[dict[str, str]] = []
     for item in payload:
@@ -526,5 +582,5 @@ async def recognize_from_uploaded_file(
         )
 
     if not results:
-        raise ImageRecognitionError("未识别到可用食材，请换一张更清晰的图片。")
+        raise ImageRecognitionError("图片中未识别到可入库食材，请换一张更清晰的图片", 422)
     return await enrich_candidates_with_categories(results)

@@ -72,7 +72,7 @@ export default function InventoryPage() {
             className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
           >
             <ShoppingBasket className="h-4 w-4" />
-            去补货
+            去补货维持库存
           </Link>
         </div>
       </header>
@@ -92,12 +92,6 @@ export default function InventoryPage() {
                   <p className="mt-2 text-2xl font-semibold text-alert">{expiringCount}</p>
                 </div>
               </div>
-            </div>
-
-            <div className="rounded-2xl bg-background p-4 text-sm text-text-muted">
-              录入入口已经统一移到补货页。拍照、自然语言和语音输入都在
-              <span className="font-medium text-text-main"> 分类库存展示 </span>
-              标签下。
             </div>
 
             <Link
@@ -137,7 +131,7 @@ export default function InventoryPage() {
                   href="/shopping?tab=inventory"
                   className="mt-4 inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
                 >
-                  去补货
+                  去补货维持库存
                 </Link>
               </div>
             ) : (

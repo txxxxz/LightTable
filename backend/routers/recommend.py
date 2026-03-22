@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from backend.core.config import RATE_LIMIT_RECOMMEND_PER_HOUR
+from backend.core.rate_limit import rate_limit
 from backend.database import record_feedback_event
 from backend.schemas.feedback import FeedbackRequest, FeedbackResponse
 from backend.schemas.recommend import RecommendRequest, RecommendResponse
@@ -9,9 +11,18 @@ from backend.services.memory_service import get_memory_service
 from backend.services.orchestrator import recommend as do_recommend
 
 router = APIRouter(prefix="/api/v1", tags=["recommend"])
+recommend_rate_limit = rate_limit(
+    "recommend",
+    limit=RATE_LIMIT_RECOMMEND_PER_HOUR,
+    window_seconds=3600,
+)
 
 
-@router.post("/recommend", response_model=RecommendResponse)
+@router.post(
+    "/recommend",
+    response_model=RecommendResponse,
+    dependencies=[Depends(recommend_rate_limit)],
+)
 async def recommend_endpoint(request: RecommendRequest) -> RecommendResponse:
     return await do_recommend(request)
 

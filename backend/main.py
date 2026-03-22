@@ -6,10 +6,16 @@ from dotenv import load_dotenv
 _load_env = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_load_env)
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.core.config import has_openrouter, has_mem0
+from backend.core.config import (
+    CORS_ALLOW_ORIGINS,
+    RATE_LIMIT_LLM_TEST_PER_HOUR,
+    has_mem0,
+    has_openrouter,
+)
+from backend.core.rate_limit import rate_limit
 from backend.services.llm_service import chat
 from backend.database import init_db
 
@@ -21,8 +27,8 @@ app = FastAPI(title="LightTable API", version="0.1.0")
 # CORS（允许前端跨域调用）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应限制具体域名
-    allow_credentials=True,
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -32,6 +38,13 @@ app.include_router(recommend.router)
 app.include_router(inventory.router)
 app.include_router(recipe.router)
 app.include_router(user.router)
+
+
+llm_test_rate_limit = rate_limit(
+    "llm_test",
+    limit=RATE_LIMIT_LLM_TEST_PER_HOUR,
+    window_seconds=3600,
+)
 
 
 @app.on_event("startup")
@@ -59,7 +72,7 @@ def llm_status():
     return {"openrouter_configured": has_openrouter()}
 
 
-@app.post("/api/v1/llm/test")
+@app.post("/api/v1/llm/test", dependencies=[Depends(llm_test_rate_limit)])
 async def llm_test():
     """简单对话测试，验证 API Key 是否可用。"""
     if not has_openrouter():
@@ -69,4 +82,3 @@ async def llm_test():
         return {"ok": True, "reply": reply.strip() or "(空回复)"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-

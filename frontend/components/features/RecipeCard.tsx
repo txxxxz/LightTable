@@ -1,18 +1,46 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import type { RecommendationPlan } from "@/lib/types";
 
-export function RecipeCard({ plan }: { plan: RecommendationPlan }) {
+export function RecipeCard({
+  plan,
+  requestId,
+}: {
+  plan: RecommendationPlan;
+  requestId?: string | null;
+}) {
+  const router = useRouter();
   const primaryDish = plan.dishes[0];
+  const recipeHref =
+    primaryDish && primaryDish.recipeId ? `/recipe/${primaryDish.recipeId}` : null;
+  const recipeTarget =
+    recipeHref && requestId
+      ? `${recipeHref}#request_id=${encodeURIComponent(requestId)}`
+      : recipeHref;
+
+  const handleOpenRecipe = () => {
+    if (!recipeTarget) return;
+    router.push(recipeTarget);
+  };
 
   return (
-    <Link
-      href={primaryDish ? `/recipe/${primaryDish.recipeId}` : "/decide"}
+    <article
+      role={recipeTarget ? "link" : undefined}
+      tabIndex={recipeTarget ? 0 : -1}
+      aria-label={recipeTarget ? `查看菜谱 ${plan.dishes.map((dish) => dish.title).join(" + ")}` : undefined}
+      onClick={handleOpenRecipe}
+      onKeyDown={(event) => {
+        if (!recipeTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleOpenRecipe();
+        }
+      }}
       className={cn(
-        "block h-full rounded-[24px] border border-border bg-surface p-4 shadow-sm transition-transform active:scale-[0.99] sm:p-5",
-        "lg:hover:-translate-y-0.5"
+        "h-full rounded-[24px] border border-border bg-surface p-4 shadow-sm transition-transform sm:p-5",
+        recipeTarget && "cursor-pointer active:scale-[0.99] lg:hover:-translate-y-0.5"
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -53,6 +81,24 @@ export function RecipeCard({ plan }: { plan: RecommendationPlan }) {
       )}
 
       <p className="mt-3 text-sm leading-relaxed text-text-muted">{plan.reason}</p>
-    </Link>
+
+      <div className="mt-4 flex items-center justify-between">
+        <span className="text-xs text-text-muted">
+          {recipeTarget ? "点击查看完整菜谱" : "当前方案没有可用详情页"}
+        </span>
+        {recipeTarget && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleOpenRecipe();
+            }}
+            className="rounded-xl border border-primary px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/5"
+          >
+            查看菜谱
+          </button>
+        )}
+      </div>
+    </article>
   );
 }

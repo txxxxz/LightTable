@@ -69,6 +69,7 @@ class KnowledgeService:
         self,
         *,
         inventory_tokens: list[str],
+        expiring_inventory_tokens: set[str],
         constraints: list[str],
         goal: str,
         explicit_tags: list[str],
@@ -90,7 +91,7 @@ class KnowledgeService:
                 continue
 
             score = 0.0
-            expiring_tokens = set(explicit_tags)
+            expiring_matched = set(matched) & set(expiring_inventory_tokens)
             score += len(matched) * 4.0
             score -= len(missing) * 2.5
             score += len(fit_tags) * 2.0
@@ -103,14 +104,23 @@ class KnowledgeService:
                 score += 1.5
             if recipe["id"] in recent_recipe_ids:
                 score -= 3.0
-            if expiring_tokens & set(core_tokens):
-                score += 1.0
+            if expiring_matched:
+                score += len(expiring_matched) * (5.0 if "消耗临期" in explicit_tags else 3.0)
+                if "优先消耗临期" not in fit_tags:
+                    fit_tags.append("优先消耗临期")
+            if matched and "消耗临期" in explicit_tags and "优先消耗库存" not in fit_tags:
+                fit_tags.append("优先消耗库存")
 
             for key, weight in preference_weights.items():
                 if key == f"recipe::{recipe['id']}":
                     score += weight
                     continue
-                if key in recipe.get("tags", []) or key in recipe.get("nutrition_tags", []):
+                if (
+                    key in recipe.get("tags", [])
+                    or key in recipe.get("nutrition_tags", [])
+                    or key in recipe.get("constraint_tags", [])
+                    or key in recipe.get("name", "")
+                ):
                     score += weight
                 if key == recipe.get("difficulty"):
                     score += weight
@@ -167,8 +177,6 @@ class KnowledgeService:
             fit.append("高蛋白")
         if "quick" in explicit_tags or "快手菜" in explicit_tags or recipe.get("difficulty") == "A":
             fit.append("快手")
-        if "消耗临期" in explicit_tags:
-            fit.append("优先消耗库存")
         if "gluten_free" in constraints and "gluten_free" in recipe_constraints:
             fit.append("无麸质")
         if "diabetes_friendly" in constraints and "diabetes_friendly" in recipe_constraints:

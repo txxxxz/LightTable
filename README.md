@@ -62,8 +62,14 @@ LightTable/
 | `OPENROUTER_API_KEY` | OpenRouter API Key（LLM 推荐与解释） | 推荐 |
 | `OPENROUTER_BASE_URL` | 默认 `https://openrouter.ai/api/v1` | 否 |
 | `OPENROUTER_MODEL` | 默认 `openai/gpt-4o-mini` | 否 |
+| `OPENROUTER_RECIPE_MODEL` | 高质量推荐链路模型，默认 `openai/gpt-4o` | 否 |
 | `MEM0_API_KEY` | Mem0 记忆服务；不填则用本地内存 fallback | 否 |
 | `EMBEDDING_MODEL_NAME` | 向量模型，默认 `BAAI/bge-small-zh-v1.5` | 否 |
+| `LIGHTTABLE_DATA_DIR` | 运行时可写数据目录；Render 建议 `/var/data/lighttable` | 否 |
+| `LIGHTTABLE_CORS_ALLOW_ORIGINS` | 允许跨域的前端域名，逗号分隔 | 否 |
+| `LIGHTTABLE_RATE_LIMIT_RECOMMEND_PER_HOUR` | `/api/v1/recommend` 每 IP 每小时限额 | 否 |
+| `LIGHTTABLE_RATE_LIMIT_RECOGNIZE_PER_HOUR` | `/api/v1/inventory/recognize` 每 IP 每小时限额 | 否 |
+| `LIGHTTABLE_RATE_LIMIT_PARSE_TEXT_PER_HOUR` | `/api/v1/inventory/parse-text` 每 IP 每小时限额 | 否 |
 
 ---
 
@@ -94,6 +100,38 @@ npm run dev:lan      # 局域网访问 (0.0.0.0)
 ```
 
 浏览器打开 <http://localhost:3000>。
+
+---
+
+## Render 部署
+
+仓库根目录已经包含 `render.yaml`，按 Blueprint 方式导入即可。当前方案是：
+
+- `lighttable-frontend` 为公开 Web Service，承载 Next.js。
+- `lighttable-backend` 为私有 Private Service，只能被前端经 Render 私网访问。
+- `OPENROUTER_API_KEY` 只配置在后端 Render 环境变量中，不进入前端 bundle，也不写入仓库。
+- SQLite 与 Chroma 等运行时数据写到 Render persistent disk，避免重启丢失。
+
+### 为什么这样能保护 key
+
+- 用户浏览器永远只请求你的前端 `/api/backend/*` 代理路径，看不到真实 LLM key。
+- 后端是 Render 私有服务，不直接暴露在公网。
+- Blueprint 中的密钥变量使用 `sync: false`，Render 在首次创建 Blueprint 时会单独要求你填值，不会把值保存进 `render.yaml`。
+- 代码里对高成本接口增加了服务端限流，降低公开站点被脚本批量消耗额度的风险。
+
+### 部署步骤
+
+1. 把当前仓库推送到 GitHub。
+2. 在 Render 控制台选择 `New +` -> `Blueprint`。
+3. 连接这个仓库并导入根目录的 `render.yaml`。
+4. 首次创建时填写 `OPENROUTER_API_KEY`；如果你使用 Mem0，再填写 `MEM0_API_KEY`。
+5. 等待 Render 创建两个服务，公开访问前端服务地址即可。
+
+### 安全边界说明
+
+- 你的 key 不会被前端逆向拿走，但公开用户仍然是在“借用你的后端额度”。
+- 因此真正的安全不是“绝对不会消耗”，而是“别人拿不到 key，且无法无限制滥刷”。
+- 如果后面你要面向更大规模公网用户，建议继续加登录、验证码或你自己的用户级配额，而不要只依赖单机内存限流。
 
 ---
 

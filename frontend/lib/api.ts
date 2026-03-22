@@ -419,6 +419,31 @@ export async function getShoppingList(userId: string): Promise<ShoppingListItem[
   return (data.items || []).map(toShoppingItem);
 }
 
+export async function addSelectedShoppingItemsToInventory(
+  userId: string,
+  itemIds: string[]
+): Promise<{
+  movedCount: number;
+  inventoryItems: InventoryItem[];
+  shoppingItems: ShoppingListItem[];
+}> {
+  const res = await apiFetch(`/api/v1/shopping-list/add-to-inventory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_id: userId,
+      item_ids: itemIds,
+    }),
+  });
+  await assertOk(res, "Failed to add shopping items to inventory");
+  const data = await res.json();
+  return {
+    movedCount: data.moved_count || 0,
+    inventoryItems: (data.inventory_items || []).map(toInventoryItem),
+    shoppingItems: (data.shopping_items || []).map(toShoppingItem),
+  };
+}
+
 export async function updateShoppingListItem(
   userId: string,
   itemId: string,

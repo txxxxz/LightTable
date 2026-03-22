@@ -25,6 +25,16 @@ export default function RecipeDetailPage() {
   const [usageMode, setUsageMode] = useState<"all" | "half" | "custom">("all");
   const [customNote, setCustomNote] = useState("");
   const [completeState, setCompleteState] = useState<"idle" | "submitting" | "done">("idle");
+  const [returnToResultsHref, setReturnToResultsHref] = useState("/decide?view=results");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    const params = new URLSearchParams(hash);
+    const requestId = params.get("request_id");
+    if (!requestId) return;
+    setReturnToResultsHref(`/decide?view=results&request_id=${encodeURIComponent(requestId)}`);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,8 +111,15 @@ export default function RecipeDetailPage() {
   return (
     <>
       <header className="sticky top-0 left-0 right-0 z-40 border-b border-border bg-surface/95 pt-safe backdrop-blur">
-        <div className="flex h-14 items-center px-4 lg:px-6">
+        <div className="flex h-14 items-center justify-between gap-3 px-4 lg:px-6">
           <h1 className="truncate pr-2 text-lg font-semibold text-text-main">{recipe.name}</h1>
+          <Button
+            variant="ghost"
+            className="h-auto shrink-0 px-0 text-sm no-underline"
+            onClick={() => router.push(returnToResultsHref)}
+          >
+            返回方案选择
+          </Button>
         </div>
       </header>
 
@@ -188,7 +205,7 @@ export default function RecipeDetailPage() {
                   <Button
                     variant="ghost"
                     className="w-full no-underline"
-                    onClick={() => router.push("/decide")}
+                    onClick={() => router.push(returnToResultsHref)}
                   >
                     换一个
                   </Button>

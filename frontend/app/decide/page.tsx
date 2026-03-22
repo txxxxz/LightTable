@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { RecipeCard } from "@/components/features/RecipeCard";
 import { Button } from "@/components/ui/Button";
@@ -18,7 +19,10 @@ const DECIDE_TAGS = [
 
 const TYPEWRITER_LINES = ["正在读取库存…", "正在套用饮食约束…", "正在生成方案…"];
 
-export default function DecidePage() {
+function DecidePageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [selectedTags, setSelectedTags] = useState<string[]>(["消耗临期"]);
   const [phase, setPhase] = useState<"input" | "generating" | "results">("input");
   const [typewriterIndex, setTypewriterIndex] = useState(0);
@@ -27,8 +31,15 @@ export default function DecidePage() {
   const [shoppingSuggestions, setShoppingSuggestions] = useState<ShoppingListItem[]>([]);
   const [profileSummary, setProfileSummary] = useState("");
   const [strategySummary, setStrategySummary] = useState("");
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { addDebugLog } = useGlobalStore();
+  const {
+    addDebugLog,
+    currentRecommendationId,
+    recommendationSnapshots,
+    setLastRecommendation,
+    clearLastRecommendation,
+  } = useGlobalStore();
 
   useEffect(() => {
     if (phase !== "generating") return;
@@ -36,6 +47,22 @@ export default function DecidePage() {
     const timer = setTimeout(() => setTypewriterIndex((value) => value + 1), 750);
     return () => clearTimeout(timer);
   }, [phase, typewriterIndex, typewriterLines]);
+
+  useEffect(() => {
+    if (searchParams.get("view") !== "results") return;
+    const requestedId = searchParams.get("request_id") || currentRecommendationId;
+    if (!requestedId) return;
+    const snapshot = recommendationSnapshots[requestedId];
+    if (!snapshot) return;
+    setSelectedTags(snapshot.selectedTags);
+    setPlans(snapshot.plans);
+    setShoppingSuggestions(snapshot.shoppingSuggestions);
+    setProfileSummary(snapshot.profileSummary);
+    setStrategySummary(snapshot.strategySummary);
+    setActiveRequestId(snapshot.requestId);
+    setError(null);
+    setPhase("results");
+  }, [currentRecommendationId, recommendationSnapshots, searchParams]);
 
   const toggleTag = (tagId: string) => {
     setSelectedTags((prev) =>
@@ -57,6 +84,15 @@ export default function DecidePage() {
       setShoppingSuggestions(result.shoppingSuggestions);
       setProfileSummary(result.profileSummary);
       setStrategySummary(result.strategySummary);
+      setActiveRequestId(result.requestId);
+      setLastRecommendation({
+        requestId: result.requestId,
+        selectedTags,
+        profileSummary: result.profileSummary,
+        strategySummary: result.strategySummary,
+        plans: result.plans,
+        shoppingSuggestions: result.shoppingSuggestions,
+      });
       setTypewriterLines([
         "正在读取库存…",
         `用户画像：${result.profileSummary.slice(0, 22)}…`,
@@ -64,7 +100,13 @@ export default function DecidePage() {
         "方案已就绪。",
       ]);
       addDebugLog("rag", `[Recommend] ${result.strategySummary}`);
-      setTimeout(() => setPhase("results"), 500);
+      setTimeout(() => {
+        router.replace(
+          `${pathname}?view=results&request_id=${encodeURIComponent(result.requestId)}`,
+          { scroll: false }
+        );
+        setPhase("results");
+      }, 500);
     } catch (cause) {
       console.error(cause);
       setError("生成推荐失败，请稍后重试");
@@ -86,7 +128,12 @@ export default function DecidePage() {
     setPhase("input");
     setPlans([]);
     setShoppingSuggestions([]);
+    setProfileSummary("");
+    setStrategySummary("");
+    setActiveRequestId(null);
     setTypewriterIndex(0);
+    clearLastRecommendation();
+    router.replace(pathname, { scroll: false });
   };
 
   return (
@@ -107,7 +154,7 @@ export default function DecidePage() {
           <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
             <section className="rounded-[24px] border border-border bg-surface p-5 shadow-sm">
               <p className="text-sm font-medium text-text-muted">今晚怎么吃</p>
-              <h2 className="mt-3 text-2xl font-semibold text-text-main">先把规则跑起来</h2>
+              <h2 className="mt-3 text-2xl font-semibold text-text-main">调用大模型为你私人订制菜谱</h2>
               <p className="mt-3 text-sm leading-6 text-text-muted">
                 推荐会优先考虑临期食材、特殊约束、时间预算和你最近的偏好信号。
               </p>
@@ -170,7 +217,7 @@ export default function DecidePage() {
               <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {plans.map((plan) => (
                   <li key={`${plan.planId}-${plan.dishes[0]?.recipeId || "none"}`}>
-                    <RecipeCard plan={plan} />
+                    <RecipeCard plan={plan} requestId={activeRequestId} />
                   </li>
                 ))}
               </ul>
@@ -192,5 +239,31 @@ export default function DecidePage() {
         )}
       </main>
     </>
+  );
+}
+
+function DecidePageFallback() {
+  return (
+    <>
+      <header className="sticky top-0 left-0 right-0 z-40 border-b border-border bg-surface/95 pt-safe backdrop-blur">
+        <div className="flex h-14 items-center justify-between px-4 lg:px-6">
+          <h1 className="text-lg font-semibold text-text-main">决策</h1>
+        </div>
+      </header>
+
+      <main className="px-4 py-4 lg:px-6 lg:py-8">
+        <div className="mx-auto max-w-2xl rounded-[24px] border border-border bg-surface px-5 py-8 text-sm text-text-muted shadow-sm">
+          加载中...
+        </div>
+      </main>
+    </>
+  );
+}
+
+export default function DecidePage() {
+  return (
+    <Suspense fallback={<DecidePageFallback />}>
+      <DecidePageContent />
+    </Suspense>
   );
 }

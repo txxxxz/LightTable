@@ -21,6 +21,7 @@ from backend.services.ingredient_service import (
     build_inventory_candidate,
     compute_status,
     get_default_category,
+    get_default_storage_type,
     merge_quantity_text,
 )
 
@@ -280,7 +281,7 @@ def update_body_profile(
         params.append(time_budget_minutes)
     if purchase_frequency_per_week is not None:
         updates.append("purchase_frequency_per_week = ?")
-        params.append(purchase_frequency_per_week)
+        params.append(max(1, min(4, int(purchase_frequency_per_week))))
     if not updates:
         return True
     params.extend([_utc_now(), user_id])
@@ -652,6 +653,16 @@ def list_recent_recommendations(user_id: str, *, limit: int = 10) -> list[dict[s
     return recommendations
 
 
+def get_generated_recipe(user_id: str, recipe_id: str, *, limit: int = 20) -> dict[str, Any] | None:
+    for record in list_recent_recommendations(user_id, limit=limit):
+        payload = record.get("plan_payload") or {}
+        generated_recipes = payload.get("generated_recipes") or {}
+        recipe = generated_recipes.get(recipe_id)
+        if isinstance(recipe, dict):
+            return recipe
+    return None
+
+
 def replace_shopping_list_items(user_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     now = _utc_now()
     with get_connection() as conn:
@@ -809,3 +820,58 @@ def add_manual_shopping_item(
             ),
         )
     return item
+
+
+def add_shopping_items_to_inventory(
+    user_id: str,
+    *,
+    item_ids: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    with get_connection() as conn:
+        params: list[Any] = [user_id]
+        query = """
+            SELECT *
+            FROM shopping_list_items
+            WHERE user_id = ? AND checked = 1
+        """
+        if item_ids:
+            placeholders = ", ".join("?" for _ in item_ids)
+            query += f" AND id IN ({placeholders})"
+            params.extend(item_ids)
+        query += " ORDER BY updated_at DESC, created_at DESC"
+        rows = conn.execute(query, params).fetchall()
+
+    selected_items = [dict(row) for row in rows]
+    if not selected_items:
+        return list_inventory(user_id), list_shopping_list_items(user_id), 0
+
+    inventory_candidates: list[dict[str, Any]] = []
+    moved_ids: list[str] = []
+    today = _utc_now().split("T", 1)[0]
+
+    for item in selected_items:
+        quantity_text = item.get("quantity_text") or item.get("recommended_quantity_text") or "1份"
+        candidate = build_inventory_candidate(
+            item["display_name"],
+            quantity_text=quantity_text,
+            category=item.get("category"),
+            storage_type=get_default_storage_type(item.get("normalized_name") or ""),
+            source_type="manual_form",
+            date_added=today,
+        )
+        candidate["display_name"] = item["display_name"]
+        candidate["normalized_name"] = item.get("normalized_name") or candidate["normalized_name"]
+        candidate["category"] = item.get("category") or candidate["category"]
+        inventory_candidates.append(candidate)
+        moved_ids.append(item["id"])
+
+    upsert_inventory_items(user_id, inventory_candidates)
+
+    with get_connection() as conn:
+        placeholders = ", ".join("?" for _ in moved_ids)
+        conn.execute(
+            f"DELETE FROM shopping_list_items WHERE user_id = ? AND id IN ({placeholders})",
+            [user_id, *moved_ids],
+        )
+
+    return list_inventory(user_id), list_shopping_list_items(user_id), len(moved_ids)
