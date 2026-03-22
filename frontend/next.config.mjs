@@ -1,6 +1,7 @@
 const rawBackendBase =
   process.env.BACKEND_INTERNAL_BASE?.trim() ||
   process.env.BACKEND_INTERNAL_HOSTPORT?.trim() ||
+  process.env.BACKEND_PUBLIC_BASE?.trim() ||
   process.env.NEXT_PUBLIC_API_BASE?.trim() ||
   "http://127.0.0.1:8000";
 

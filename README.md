@@ -108,14 +108,13 @@ npm run dev:lan      # 局域网访问 (0.0.0.0)
 仓库根目录已经包含 `render.yaml`，按 Blueprint 方式导入即可。当前方案是：
 
 - `lighttable-frontend` 为公开 Web Service，承载 Next.js。
-- `lighttable-backend` 为私有 Private Service，只能被前端经 Render 私网访问。
+- `lighttable-backend` 为公开 Web Service，但 OpenRouter Key 只保留在后端环境变量。
 - `OPENROUTER_API_KEY` 只配置在后端 Render 环境变量中，不进入前端 bundle，也不写入仓库。
-- SQLite 与 Chroma 等运行时数据写到 Render persistent disk，避免重启丢失。
+- 前端通过服务端代理访问后端公开 URL，浏览器不会直接看到你的 key。
 
 ### 为什么这样能保护 key
 
 - 用户浏览器永远只请求你的前端 `/api/backend/*` 代理路径，看不到真实 LLM key。
-- 后端是 Render 私有服务，不直接暴露在公网。
 - Blueprint 中的密钥变量使用 `sync: false`，Render 在首次创建 Blueprint 时会单独要求你填值，不会把值保存进 `render.yaml`。
 - 代码里对高成本接口增加了服务端限流，降低公开站点被脚本批量消耗额度的风险。
 
@@ -132,6 +131,8 @@ npm run dev:lan      # 局域网访问 (0.0.0.0)
 - 你的 key 不会被前端逆向拿走，但公开用户仍然是在“借用你的后端额度”。
 - 因此真正的安全不是“绝对不会消耗”，而是“别人拿不到 key，且无法无限制滥刷”。
 - 如果后面你要面向更大规模公网用户，建议继续加登录、验证码或你自己的用户级配额，而不要只依赖单机内存限流。
+- 当前 `render.yaml` 走免费实例，不挂载 persistent disk，因此 SQLite/本地文件数据会在重启、重部署或平台维护后丢失，只适合演示或轻量试用。
+- 免费实例不能接收 private network 流量，因此前端需通过 `BACKEND_PUBLIC_BASE` 访问后端公开地址。如果你的后端实际子域名不是 `lighttable-backend.onrender.com`，把前端这个环境变量改成 Render 面板里显示的真实后端 URL。
 
 ---
 

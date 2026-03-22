@@ -1,11 +1,12 @@
 services:
-  - type: pserv
+  - type: web
     runtime: python
     name: lighttable-backend
     rootDir: .
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/status
     buildFilter:
       paths:
         - backend/**
@@ -27,7 +28,7 @@ services:
       - key: OPENROUTER_RECIPE_MODEL
         value: openai/gpt-4o
       - key: LIGHTTABLE_DATA_DIR
-        value: /var/data/lighttable
+        value: /tmp/lighttable
       - key: LIGHTTABLE_CORS_ALLOW_ORIGINS
         value: http://localhost:3000,http://127.0.0.1:3000
       - key: LIGHTTABLE_RATE_LIMIT_RECOMMEND_PER_HOUR
@@ -38,16 +39,12 @@ services:
         value: "120"
       - key: LIGHTTABLE_RATE_LIMIT_LLM_TEST_PER_HOUR
         value: "5"
-    disk:
-      name: lighttable-data
-      mountPath: /var/data/lighttable
-      sizeGB: 1
 
   - type: web
     runtime: node
     name: lighttable-frontend
     rootDir: frontend
-    plan: starter
+    plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
     healthCheckPath: /
@@ -60,8 +57,5 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.11.0
-      - key: BACKEND_INTERNAL_HOSTPORT
-        fromService:
-          type: pserv
-          name: lighttable-backend
-          property: hostport
+      - key: BACKEND_PUBLIC_BASE
+        value: https://lighttable-backend.onrender.com
