@@ -1,0 +1,12 @@
+# Optional / experimental integrations.
+# These are intentionally excluded from the default Render deploy because
+# they add heavy dependency resolution and are not required for the current
+# backend startup path.
+
+# LlamaIndex / local vector stack
+llama-index
+llama-index-embeddings-huggingface
+chromadb
+
+# Mem0 cloud memory client
+mem0ai

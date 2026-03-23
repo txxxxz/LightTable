@@ -86,6 +86,12 @@ pip install -r requirements.txt
 uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+如果你要启用实验性依赖（如 `Mem0` 客户端或本地 `LlamaIndex/Chroma` 栈），再额外安装：
+
+```bash
+pip install -r requirements.optional.txt
+```
+
 - API 文档：<http://localhost:8000/docs>
 - 健康检查：<http://localhost:8000/api/v1/status>
 

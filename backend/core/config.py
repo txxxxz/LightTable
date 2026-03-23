@@ -1,6 +1,7 @@
 """
 应用配置：从环境变量读取，不将密钥写入代码。
 """
+import importlib.util
 import os
 from pathlib import Path
 
@@ -62,7 +63,7 @@ MEM0_API_KEY: str | None = os.getenv("MEM0_API_KEY")
 REDNOTE_MCP_COMMAND: str | None = os.getenv("REDNOTE_MCP_COMMAND")
 
 def has_mem0() -> bool:
-    return bool(MEM0_API_KEY)
+    return bool(MEM0_API_KEY and importlib.util.find_spec("mem0"))
 
 
 # ============ Security / runtime ============
