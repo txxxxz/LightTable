@@ -6,10 +6,14 @@ import {
   Bug,
   ChefHat,
   Clock3,
+  Dumbbell,
   Flame,
+  Gauge,
   Globe,
   HeartPulse,
+  NotebookPen,
   Ruler,
+  Trophy,
   Users,
   UtensilsCrossed,
   Weight,
@@ -42,7 +46,13 @@ import {
   KITCHEN_TOOL_OPTIONS,
   METHOD_OPTIONS,
 } from "@/lib/store";
-import type { CookingLevel, Goal, UserProfileResponse } from "@/lib/types";
+import type {
+  CompetitionCycle,
+  CookingLevel,
+  Goal,
+  TrainingIntensity,
+  UserProfileResponse,
+} from "@/lib/types";
 import { getUserId } from "@/lib/user";
 
 const GOAL_OPTIONS: { value: Goal; label: string; description: string }[] = [
@@ -57,6 +67,29 @@ const COOKING_LEVEL_OPTIONS: { value: CookingLevel; label: string }[] = [
   { value: "chef", label: "大厨" },
 ];
 
+const TRAINING_INTENSITY_OPTIONS: { value: TrainingIntensity; label: string }[] = [
+  { value: "low", label: "轻量" },
+  { value: "moderate", label: "中等" },
+  { value: "high", label: "高强度" },
+  { value: "double_session", label: "双训" },
+];
+
+const COMPETITION_CYCLE_OPTIONS: { value: CompetitionCycle; label: string }[] = [
+  { value: "base", label: "基础期" },
+  { value: "build", label: "提升期" },
+  { value: "taper", label: "减量期" },
+  { value: "competition", label: "比赛期" },
+  { value: "recovery", label: "恢复期" },
+];
+
+type AthleteDraft = {
+  sport_type: string;
+  training_days_per_week: string;
+  training_intensity: TrainingIntensity | "";
+  competition_cycle: CompetitionCycle | "";
+  training_notes: string;
+};
+
 export default function SettingsPage() {
   const userId = getUserId();
   const { system, setDebugMode, addDebugLog } = useGlobalStore();
@@ -67,6 +100,14 @@ export default function SettingsPage() {
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [dislikesModalOpen, setDislikesModalOpen] = useState(false);
   const [numberEditType, setNumberEditType] = useState<NumberEditType | null>(null);
+  const [athleteDraft, setAthleteDraft] = useState<AthleteDraft>({
+    sport_type: "",
+    training_days_per_week: "",
+    training_intensity: "",
+    competition_cycle: "",
+    training_notes: "",
+  });
+  const [savingAthlete, setSavingAthlete] = useState(false);
 
   useEffect(() => {
     getUserProfile(userId)
@@ -82,6 +123,20 @@ export default function SettingsPage() {
       })
       .finally(() => setLoading(false));
   }, [addDebugLog, setDebugMode, userId]);
+
+  useEffect(() => {
+    if (!data) return;
+    setAthleteDraft({
+      sport_type: data.profile.sport_type || "",
+      training_days_per_week:
+        data.profile.training_days_per_week != null
+          ? String(data.profile.training_days_per_week)
+          : "",
+      training_intensity: data.profile.training_intensity || "",
+      competition_cycle: data.profile.competition_cycle || "",
+      training_notes: data.profile.training_notes || "",
+    });
+  }, [data]);
 
   if (loading) {
     return (
@@ -150,6 +205,32 @@ export default function SettingsPage() {
     addDebugLog("info", `[System] Debug mode ${enabled ? "enabled" : "disabled"}`);
   };
 
+  const handleAthleteDraftChange = <K extends keyof AthleteDraft>(
+    key: K,
+    value: AthleteDraft[K]
+  ) => {
+    setAthleteDraft((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveAthleteProfile = async () => {
+    setSavingAthlete(true);
+    try {
+      await patchBodyProfile(userId, {
+        sport_type: athleteDraft.sport_type.trim() || null,
+        training_days_per_week: athleteDraft.training_days_per_week
+          ? Number(athleteDraft.training_days_per_week)
+          : null,
+        training_intensity: athleteDraft.training_intensity || null,
+        competition_cycle: athleteDraft.competition_cycle || null,
+        training_notes: athleteDraft.training_notes.trim() || null,
+      });
+      await refreshFromServer();
+      addDebugLog("mem0", "[Profile] athlete context updated");
+    } finally {
+      setSavingAthlete(false);
+    }
+  };
+
   return (
     <>
       <header className="sticky top-0 left-0 right-0 z-40 border-b border-zinc-200/80 bg-zinc-50/95 pt-safe backdrop-blur">
@@ -176,6 +257,11 @@ export default function SettingsPage() {
                   value={`${profile.weight} kg`}
                   onClick={() => setNumberEditType("weight")}
                   showChevron
+                />
+                <SettingsRow
+                  icon={<HeartPulse className="h-5 w-5" />}
+                  label="BMI"
+                  value={profile.bmi != null ? `${profile.bmi}` : "—"}
                 />
                 <SettingsRow
                   icon={<Users className="h-5 w-5" />}
@@ -210,6 +296,117 @@ export default function SettingsPage() {
                   showChevron
                   isLast
                 />
+              </SettingsGroup>
+
+              <SettingsGroup title="运动表现">
+                <div className="space-y-4 bg-white px-4 py-4 lg:px-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="space-y-2">
+                      <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                        <Dumbbell className="h-4 w-4 text-primary" />
+                        运动项目
+                      </span>
+                      <input
+                        type="text"
+                        value={athleteDraft.sport_type}
+                        onChange={(event) =>
+                          handleAthleteDraftChange("sport_type", event.target.value)
+                        }
+                        placeholder="例如：羽毛球、游泳、铁三"
+                        className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      />
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                        <Clock3 className="h-4 w-4 text-primary" />
+                        每周训练天数
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={14}
+                        value={athleteDraft.training_days_per_week}
+                        onChange={(event) =>
+                          handleAthleteDraftChange("training_days_per_week", event.target.value)
+                        }
+                        placeholder="0-14"
+                        className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                      <Gauge className="h-4 w-4 text-primary" />
+                      训练强度
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {TRAINING_INTENSITY_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleAthleteDraftChange("training_intensity", option.value)}
+                          className={`rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+                            athleteDraft.training_intensity === option.value
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-primary/40"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                      <Trophy className="h-4 w-4 text-primary" />
+                      赛事周期
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {COMPETITION_CYCLE_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleAthleteDraftChange("competition_cycle", option.value)}
+                          className={`rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+                            athleteDraft.competition_cycle === option.value
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-primary/40"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="space-y-2">
+                    <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                      <NotebookPen className="h-4 w-4 text-primary" />
+                      训练计划备注
+                    </span>
+                    <textarea
+                      value={athleteDraft.training_notes}
+                      onChange={(event) =>
+                        handleAthleteDraftChange("training_notes", event.target.value)
+                      }
+                      rows={4}
+                      placeholder="例如：周二力量，周四间歇，周日长距离。"
+                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-900 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveAthleteProfile}
+                    disabled={savingAthlete}
+                    className="inline-flex rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingAthlete ? "保存中..." : "保存运动员信息"}
+                  </button>
+                </div>
               </SettingsGroup>
 
               <SettingsGroup title="Agent 调教">

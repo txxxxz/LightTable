@@ -5,6 +5,8 @@ import type {
   ShoppingListItem,
   UserProfileResponse,
   VideoReference,
+  WeeklyPlanDay,
+  WeeklyRecommendResponse,
 } from "./types";
 import { normalizeInventoryCategory } from "./inventory-categories";
 
@@ -69,6 +71,12 @@ type ApiInventoryItem = {
   status: InventoryItem["status"];
   source_type: InventoryItem["sourceType"];
   image_url?: string | null;
+  macros?: {
+    carbs_g?: number | null;
+    protein_g?: number | null;
+    fat_g?: number | null;
+    estimated: boolean;
+  } | null;
 };
 
 type ApiPlan = {
@@ -127,6 +135,24 @@ type ApiRecommendResponse = {
   shopping_suggestions: ApiShoppingListItem[];
 };
 
+type ApiWeeklyPlanDay = {
+  day_label: string;
+  focus: string;
+  training_hint: string;
+  plan: ApiPlan;
+};
+
+type ApiWeeklyRecommendResponse = {
+  status: "ready" | "needs_ingredients";
+  request_id: string;
+  profile_summary: string;
+  strategy_summary: string;
+  days: ApiWeeklyPlanDay[];
+  shopping_suggestions: ApiShoppingListItem[];
+  required_ingredients: ApiShoppingListItem[];
+  blocking_reasons: string[];
+};
+
 function toInventoryItem(item: ApiInventoryItem): InventoryItem {
   return {
     id: item.id,
@@ -141,6 +167,14 @@ function toInventoryItem(item: ApiInventoryItem): InventoryItem {
     status: item.status,
     sourceType: item.source_type,
     imageUrl: item.image_url,
+    macros: item.macros
+      ? {
+          carbsG: item.macros.carbs_g,
+          proteinG: item.macros.protein_g,
+          fatG: item.macros.fat_g,
+          estimated: item.macros.estimated,
+        }
+      : null,
   };
 }
 
@@ -220,6 +254,15 @@ function toRecipe(recipe: ApiRecipe): Recipe {
           available: recipe.video_reference.available,
         } satisfies VideoReference)
       : null,
+  };
+}
+
+function toWeeklyPlanDay(day: ApiWeeklyPlanDay): WeeklyPlanDay {
+  return {
+    dayLabel: day.day_label,
+    focus: day.focus,
+    trainingHint: day.training_hint,
+    plan: toPlan(day.plan),
   };
 }
 
@@ -349,6 +392,34 @@ export async function recommend(
     strategySummary: data.strategy_summary,
     plans: data.plans.map(toPlan),
     shoppingSuggestions: data.shopping_suggestions.map(toShoppingItem),
+  };
+}
+
+export async function recommendWeekly(
+  userId: string,
+  tags: string[],
+  context?: Record<string, unknown>
+): Promise<WeeklyRecommendResponse> {
+  const res = await apiFetch(`/api/v1/recommend/weekly`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_id: userId,
+      tags,
+      context,
+    }),
+  });
+  await assertOk(res, "Failed to get weekly recommendations");
+  const data: ApiWeeklyRecommendResponse = await res.json();
+  return {
+    status: data.status,
+    requestId: data.request_id,
+    profileSummary: data.profile_summary,
+    strategySummary: data.strategy_summary,
+    days: data.days.map(toWeeklyPlanDay),
+    shoppingSuggestions: data.shopping_suggestions.map(toShoppingItem),
+    requiredIngredients: data.required_ingredients.map(toShoppingItem),
+    blockingReasons: data.blocking_reasons,
   };
 }
 

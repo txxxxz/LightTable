@@ -38,6 +38,7 @@ def get_user_profile(user_id: str = DEFAULT_USER_ID):
 
 @router.patch("/profile")
 def patch_body_profile(body: BodyProfileUpdate, user_id: str = DEFAULT_USER_ID):
+    provided_fields = body.model_fields_set
     ok = update_body_profile(
         user_id,
         height=body.height,
@@ -46,6 +47,27 @@ def patch_body_profile(body: BodyProfileUpdate, user_id: str = DEFAULT_USER_ID):
         household_size=body.household_size,
         time_budget_minutes=body.time_budget_minutes,
         purchase_frequency_per_week=body.purchase_frequency_per_week,
+        sport_type="" if "sport_type" in provided_fields and body.sport_type is None else body.sport_type,
+        training_days_per_week=(
+            0
+            if "training_days_per_week" in provided_fields and body.training_days_per_week is None
+            else body.training_days_per_week
+        ),
+        training_intensity=(
+            ""
+            if "training_intensity" in provided_fields and body.training_intensity is None
+            else body.training_intensity
+        ),
+        competition_cycle=(
+            ""
+            if "competition_cycle" in provided_fields and body.competition_cycle is None
+            else body.competition_cycle
+        ),
+        training_notes=(
+            ""
+            if "training_notes" in provided_fields and body.training_notes is None
+            else body.training_notes
+        ),
     )
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
@@ -53,6 +75,42 @@ def patch_body_profile(body: BodyProfileUpdate, user_id: str = DEFAULT_USER_ID):
     if body.goal is not None:
         goal_text = {"fat_loss": "减脂", "maintain": "维持", "muscle_gain": "增肌"}.get(body.goal, body.goal)
         get_memory_service().add_memory(user_id, f"User goal: {goal_text}")
+    if any(
+        value is not None
+        for value in (
+            body.sport_type,
+            body.training_days_per_week,
+            body.training_intensity,
+            body.competition_cycle,
+            body.training_notes,
+        )
+    ):
+        athlete_summary = " | ".join(
+            [
+                part
+                for part in (
+                    f"sport={body.sport_type}" if body.sport_type else None,
+                    (
+                        f"days={body.training_days_per_week}"
+                        if body.training_days_per_week is not None
+                        else None
+                    ),
+                    (
+                        f"intensity={body.training_intensity}"
+                        if body.training_intensity
+                        else None
+                    ),
+                    (
+                        f"cycle={body.competition_cycle}"
+                        if body.competition_cycle
+                        else None
+                    ),
+                    f"notes={body.training_notes}" if body.training_notes else None,
+                )
+            ]
+        )
+        if athlete_summary:
+            get_memory_service().add_memory(user_id, f"User training profile: {athlete_summary}")
 
     return {"ok": True}
 

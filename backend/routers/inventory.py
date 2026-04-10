@@ -41,6 +41,7 @@ from backend.services.ingredient_service import (
     parse_freeform_inventory_text,
     recognize_from_uploaded_file,
 )
+from backend.services.nutrition_service import estimate_inventory_macros
 
 router = APIRouter(prefix="/api/v1", tags=["inventory"])
 parse_inventory_text_rate_limit = rate_limit(
@@ -56,7 +57,12 @@ recognize_inventory_rate_limit = rate_limit(
 
 
 def _to_inventory_schema(item: dict) -> InventoryItem:
-    return InventoryItem(**item)
+    macros = estimate_inventory_macros(
+        normalized_name=item.get("normalized_name"),
+        display_name=item.get("display_name"),
+        quantity_text=item.get("quantity_text"),
+    )
+    return InventoryItem(**{**item, "macros": macros})
 
 
 @router.get("/inventory/{user_id}", response_model=InventoryListResponse)

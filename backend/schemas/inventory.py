@@ -24,6 +24,13 @@ class SourceType(str, Enum):
     receipt = "receipt"
 
 
+class NutritionMacroEstimate(BaseModel):
+    carbs_g: float | None = None
+    protein_g: float | None = None
+    fat_g: float | None = None
+    estimated: bool = True
+
+
 class InventoryItem(BaseModel):
     id: str
     display_name: str
@@ -37,6 +44,7 @@ class InventoryItem(BaseModel):
     status: InventoryStatus = InventoryStatus.fresh
     source_type: SourceType = SourceType.manual_text
     image_url: str | None = None
+    macros: NutritionMacroEstimate | None = None
 
 
 class InventoryCandidateInput(BaseModel):

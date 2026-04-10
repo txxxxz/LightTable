@@ -6,9 +6,9 @@ from backend.core.config import RATE_LIMIT_RECOMMEND_PER_HOUR
 from backend.core.rate_limit import rate_limit
 from backend.database import record_feedback_event
 from backend.schemas.feedback import FeedbackRequest, FeedbackResponse
-from backend.schemas.recommend import RecommendRequest, RecommendResponse
+from backend.schemas.recommend import RecommendRequest, RecommendResponse, WeeklyRecommendResponse
 from backend.services.memory_service import get_memory_service
-from backend.services.orchestrator import recommend as do_recommend
+from backend.services.orchestrator import recommend as do_recommend, recommend_weekly as do_recommend_weekly
 
 router = APIRouter(prefix="/api/v1", tags=["recommend"])
 recommend_rate_limit = rate_limit(
@@ -25,6 +25,15 @@ recommend_rate_limit = rate_limit(
 )
 async def recommend_endpoint(request: RecommendRequest) -> RecommendResponse:
     return await do_recommend(request)
+
+
+@router.post(
+    "/recommend/weekly",
+    response_model=WeeklyRecommendResponse,
+    dependencies=[Depends(recommend_rate_limit)],
+)
+async def recommend_weekly_endpoint(request: RecommendRequest) -> WeeklyRecommendResponse:
+    return await do_recommend_weekly(request)
 
 
 @router.post("/feedback", response_model=FeedbackResponse)

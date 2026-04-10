@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS user (
     household_size INTEGER NOT NULL DEFAULT 2,
     time_budget_minutes INTEGER NOT NULL DEFAULT 20,
     purchase_frequency_per_week INTEGER NOT NULL DEFAULT 2,
+    sport_type TEXT DEFAULT '',
+    training_days_per_week INTEGER,
+    training_intensity TEXT DEFAULT '',
+    competition_cycle TEXT DEFAULT '',
+    training_notes TEXT DEFAULT '',
     expiry_alert INTEGER NOT NULL DEFAULT 1,
     debug_mode INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -113,6 +118,11 @@ USER_MIGRATIONS = [
     "ALTER TABLE user ADD COLUMN household_size INTEGER NOT NULL DEFAULT 2;",
     "ALTER TABLE user ADD COLUMN time_budget_minutes INTEGER NOT NULL DEFAULT 20;",
     "ALTER TABLE user ADD COLUMN purchase_frequency_per_week INTEGER NOT NULL DEFAULT 2;",
+    "ALTER TABLE user ADD COLUMN sport_type TEXT DEFAULT '';",
+    "ALTER TABLE user ADD COLUMN training_days_per_week INTEGER;",
+    "ALTER TABLE user ADD COLUMN training_intensity TEXT DEFAULT '';",
+    "ALTER TABLE user ADD COLUMN competition_cycle TEXT DEFAULT '';",
+    "ALTER TABLE user ADD COLUMN training_notes TEXT DEFAULT '';",
 ]
 
 SHOPPING_LIST_MIGRATIONS = [
@@ -160,6 +170,15 @@ def _utc_now() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
+def _compute_bmi(height_cm: int | float | None, weight_kg: int | float | None) -> float | None:
+    if not height_cm or not weight_kg:
+        return None
+    height_m = float(height_cm) / 100.0
+    if height_m <= 0:
+        return None
+    return round(float(weight_kg) / (height_m * height_m), 1)
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(USER_SCHEMA)
@@ -186,10 +205,12 @@ def init_db() -> None:
                     id, height, weight, goal, dislikes, cooking_level, flavor_tags,
                     cuisine_tags, method_tags, health_constraints, kitchen_tools,
                     household_size, time_budget_minutes, purchase_frequency_per_week,
+                    sport_type, training_days_per_week, training_intensity, competition_cycle,
+                    training_notes,
                     expiry_alert, debug_mode,
                     created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     DEFAULT_USER_ID,
@@ -206,6 +227,11 @@ def init_db() -> None:
                     2,
                     20,
                     2,
+                    "",
+                    None,
+                    "",
+                    "",
+                    "",
                     1,
                     0,
                     now,
@@ -228,10 +254,21 @@ def get_profile(user_id: str) -> dict[str, Any] | None:
         "profile": {
             "height": int(row["height"]),
             "weight": float(row["weight"]),
+            "bmi": _compute_bmi(row.get("height"), row.get("weight")),
             "goal": row["goal"],
             "household_size": int(row.get("household_size", 2)),
             "time_budget_minutes": int(row.get("time_budget_minutes", 20)),
             "purchase_frequency_per_week": int(row.get("purchase_frequency_per_week", 2)),
+            "sport_type": (row.get("sport_type") or "").strip() or None,
+            "training_days_per_week": (
+                int(row["training_days_per_week"])
+                if row.get("training_days_per_week") not in (None, "")
+                and int(row["training_days_per_week"]) > 0
+                else None
+            ),
+            "training_intensity": (row.get("training_intensity") or "").strip() or None,
+            "competition_cycle": (row.get("competition_cycle") or "").strip() or None,
+            "training_notes": (row.get("training_notes") or "").strip() or None,
         },
         "preferences": {
             "dislikes": _parse_json_list(row.get("dislikes")),
@@ -258,6 +295,11 @@ def update_body_profile(
     household_size: int | None = None,
     time_budget_minutes: int | None = None,
     purchase_frequency_per_week: int | None = None,
+    sport_type: str | None = None,
+    training_days_per_week: int | None = None,
+    training_intensity: str | None = None,
+    competition_cycle: str | None = None,
+    training_notes: str | None = None,
 ) -> bool:
     row = get_user_row(user_id)
     if row is None:
@@ -282,6 +324,21 @@ def update_body_profile(
     if purchase_frequency_per_week is not None:
         updates.append("purchase_frequency_per_week = ?")
         params.append(max(1, min(4, int(purchase_frequency_per_week))))
+    if sport_type is not None:
+        updates.append("sport_type = ?")
+        params.append(sport_type.strip())
+    if training_days_per_week is not None:
+        updates.append("training_days_per_week = ?")
+        params.append(max(0, min(14, int(training_days_per_week))))
+    if training_intensity is not None:
+        updates.append("training_intensity = ?")
+        params.append(training_intensity.strip())
+    if competition_cycle is not None:
+        updates.append("competition_cycle = ?")
+        params.append(competition_cycle.strip())
+    if training_notes is not None:
+        updates.append("training_notes = ?")
+        params.append(training_notes.strip())
     if not updates:
         return True
     params.extend([_utc_now(), user_id])

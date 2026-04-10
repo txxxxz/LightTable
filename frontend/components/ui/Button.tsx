@@ -1,40 +1,46 @@
 "use client";
 
-import { forwardRef } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+
 import { cn } from "@/lib/cn";
 
 type ButtonVariant = "primary" | "secondary" | "ghost";
 
-type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  children: ReactNode;
   variant?: ButtonVariant;
   fullWidth?: boolean;
 };
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "primary", fullWidth, children, ...props }, ref) => {
-    const base =
-      "h-12 rounded-lg font-medium transition-colors active:scale-[0.98] disabled:opacity-50";
-    const variants: Record<ButtonVariant, string> = {
-      primary:
-        "bg-primary text-primary-foreground hover:bg-primary-hover border border-border",
-      secondary:
-        "bg-transparent border border-primary text-primary hover:bg-primary/5",
-      ghost: "bg-transparent text-primary underline hover:bg-primary/5",
-    };
-    return (
-      <button
-        ref={ref}
-        className={cn(
-          base,
-          variants[variant],
-          fullWidth && "w-full",
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </button>
-    );
-  }
-);
-Button.displayName = "Button";
+const variantClasses: Record<ButtonVariant, string> = {
+  primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+  secondary: "border border-border bg-background text-text-main hover:border-primary/30",
+  ghost: "bg-transparent text-primary hover:bg-primary/5",
+};
+
+export function Button({
+  children,
+  className,
+  variant = "primary",
+  fullWidth = false,
+  type = "button",
+  disabled,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-medium transition-colors",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        variantClasses[variant],
+        fullWidth && "w-full",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}

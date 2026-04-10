@@ -76,15 +76,16 @@ class KnowledgeService:
         time_budget_minutes: int,
         preference_weights: dict[str, float],
         recent_recipe_ids: set[str],
+        athlete_context: dict[str, object] | None = None,
     ) -> list[RecipeHit]:
         hits: list[RecipeHit] = []
         inventory_set = set(inventory_tokens)
+        athlete_context = athlete_context or {}
         for recipe in self.recipes:
             core_tokens = [normalize_ingredient_name(item) for item in recipe.get("core_ingredients", [])]
-            optional_tokens = [normalize_ingredient_name(item) for item in recipe.get("optional_ingredients", [])]
             matched = [token for token in core_tokens if token in inventory_set]
             missing = [token for token in core_tokens if token not in inventory_set]
-            fit_tags = self._fit_tags(recipe, constraints, goal, explicit_tags)
+            fit_tags = self._fit_tags(recipe, constraints, goal, explicit_tags, athlete_context)
             if not self._passes_constraints(recipe, constraints):
                 continue
             if inventory_tokens and not matched and len(missing) == len(core_tokens):
@@ -92,6 +93,8 @@ class KnowledgeService:
 
             score = 0.0
             expiring_matched = set(matched) & set(expiring_inventory_tokens)
+            nutrition_tags = set(recipe.get("nutrition_tags", []))
+            recovery_friendly = self._is_recovery_friendly(recipe)
             score += len(matched) * 4.0
             score -= len(missing) * 2.5
             score += len(fit_tags) * 2.0
@@ -100,8 +103,15 @@ class KnowledgeService:
                 score += 2.0
             if "快手菜" in explicit_tags and recipe.get("difficulty") == "A":
                 score += 2.5
-            if "减脂" in explicit_tags and "low_sugar" in recipe.get("nutrition_tags", []):
+            if "减脂" in explicit_tags and "low_sugar" in nutrition_tags:
                 score += 1.5
+            if "增肌" in explicit_tags and "high_protein" in nutrition_tags:
+                score += 3.0
+            if "运动后恢复" in explicit_tags:
+                if "high_protein" in nutrition_tags:
+                    score += 2.5
+                if recovery_friendly:
+                    score += 2.0
             if recipe["id"] in recent_recipe_ids:
                 score -= 3.0
             if expiring_matched:
@@ -110,6 +120,24 @@ class KnowledgeService:
                     fit_tags.append("优先消耗临期")
             if matched and "消耗临期" in explicit_tags and "优先消耗库存" not in fit_tags:
                 fit_tags.append("优先消耗库存")
+
+            training_days = int(athlete_context.get("training_days_per_week") or 0)
+            training_intensity = str(athlete_context.get("training_intensity") or "")
+            competition_cycle = str(athlete_context.get("competition_cycle") or "")
+
+            if training_days >= 5 and recipe.get("difficulty") == "A":
+                score += 0.8
+            if training_intensity in {"high", "double_session"} and "high_protein" in nutrition_tags:
+                score += 2.0
+            if competition_cycle in {"base", "build"} and "high_protein" in nutrition_tags:
+                score += 1.5
+            if competition_cycle in {"taper", "competition"}:
+                if recovery_friendly:
+                    score += 1.8
+                if recipe.get("difficulty") in {"A", "B"}:
+                    score += 0.8
+            if competition_cycle == "recovery" and recovery_friendly:
+                score += 2.2
 
             for key, weight in preference_weights.items():
                 if key == f"recipe::{recipe['id']}":
@@ -133,10 +161,7 @@ class KnowledgeService:
                     difficulty=recipe.get("difficulty", "B"),
                     time_minutes=recipe.get("time_minutes"),
                     matched_ingredients=[get_default_display_name(token, token) for token in matched],
-                    missing_ingredients=[
-                        get_default_display_name(token, token)
-                        for token in missing or optional_tokens[:1]
-                    ],
+                    missing_ingredients=[get_default_display_name(token, token) for token in missing],
                     fit_tags=fit_tags,
                     score=round(score, 2),
                 )
@@ -167,21 +192,45 @@ class KnowledgeService:
             return False
         return True
 
-    def _fit_tags(self, recipe: dict, constraints: list[str], goal: str, explicit_tags: list[str]) -> list[str]:
+    def _fit_tags(
+        self,
+        recipe: dict,
+        constraints: list[str],
+        goal: str,
+        explicit_tags: list[str],
+        athlete_context: dict[str, object],
+    ) -> list[str]:
         fit: list[str] = []
         nutrition_tags = set(recipe.get("nutrition_tags", []))
         recipe_constraints = set(recipe.get("constraint_tags", []))
         if goal == "fat_loss" and {"high_protein", "low_sugar"} & nutrition_tags:
             fit.append("减脂友好")
-        if goal == "muscle_gain" and "high_protein" in nutrition_tags:
-            fit.append("高蛋白")
+        if (goal == "muscle_gain" or "增肌" in explicit_tags) and "high_protein" in nutrition_tags:
+            fit.append("增肌支持")
+        if "运动后恢复" in explicit_tags and self._is_recovery_friendly(recipe):
+            fit.append("恢复友好")
         if "quick" in explicit_tags or "快手菜" in explicit_tags or recipe.get("difficulty") == "A":
             fit.append("快手")
         if "gluten_free" in constraints and "gluten_free" in recipe_constraints:
             fit.append("无麸质")
         if "diabetes_friendly" in constraints and "diabetes_friendly" in recipe_constraints:
             fit.append("控糖友好")
+        cycle = str(athlete_context.get("competition_cycle") or "")
+        if cycle in {"taper", "competition"} and self._is_recovery_friendly(recipe):
+            fit.append("赛前稳态")
+        if cycle == "recovery" and self._is_recovery_friendly(recipe):
+            fit.append("恢复周期")
         return fit
+
+    def _is_recovery_friendly(self, recipe: dict) -> bool:
+        nutrition_tags = set(recipe.get("nutrition_tags", []))
+        tags = set(recipe.get("tags", []))
+        return bool(
+            "high_protein" in nutrition_tags
+            or "low_sodium" in nutrition_tags
+            or {"清淡", "汤"} & tags
+            or recipe.get("difficulty") == "A"
+        )
 
 
 @lru_cache(maxsize=1)

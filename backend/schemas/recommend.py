@@ -36,3 +36,21 @@ class RecommendResponse(BaseModel):
     plans: list[RecommendationPlan]
     shopping_suggestions: list[ShoppingListItem] = Field(default_factory=list)
     debug_retrieval: list[RecipeHit] = Field(default_factory=list)
+
+
+class WeeklyPlanDay(BaseModel):
+    day_label: str
+    focus: str
+    training_hint: str
+    plan: RecommendationPlan
+
+
+class WeeklyRecommendResponse(BaseModel):
+    status: str
+    request_id: str
+    profile_summary: str
+    strategy_summary: str
+    days: list[WeeklyPlanDay] = Field(default_factory=list)
+    shopping_suggestions: list[ShoppingListItem] = Field(default_factory=list)
+    required_ingredients: list[ShoppingListItem] = Field(default_factory=list)
+    blocking_reasons: list[str] = Field(default_factory=list)

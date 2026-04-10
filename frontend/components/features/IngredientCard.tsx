@@ -18,10 +18,11 @@ const statusConfig: Record<
 
 export function IngredientCard({ item }: { item: InventoryItem }) {
   const { label, bg, text } = statusConfig[item.status];
+  const macros = item.macros;
   return (
     <li
       className={cn(
-        "flex h-full items-center gap-3 rounded-2xl border border-border bg-surface p-3 sm:p-4"
+        "flex h-full items-start gap-3 rounded-2xl border border-border bg-surface p-3 sm:p-4"
       )}
     >
       <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[6px] bg-background border border-border">
@@ -42,6 +43,25 @@ export function IngredientCard({ item }: { item: InventoryItem }) {
         {item.quantityText && (
           <p className="text-sm text-text-muted truncate">{item.quantityText}</p>
         )}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {macros ? (
+            <>
+              <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
+                碳水 {macros.carbsG ?? "-"}g
+              </span>
+              <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
+                蛋白质 {macros.proteinG ?? "-"}g
+              </span>
+              <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
+                脂肪 {macros.fatG ?? "-"}g
+              </span>
+            </>
+          ) : (
+            <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
+              营养待补充
+            </span>
+          )}
+        </div>
       </div>
       <span
         className={cn(

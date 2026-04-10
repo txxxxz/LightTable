@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from backend.core.config import OPENROUTER_RECIPE_MODEL, OPENROUTER_RECIPE_TIMEOUT_SECONDS
 from backend.database import (
@@ -17,7 +17,14 @@ from backend.database import (
     replace_shopping_list_items,
 )
 from backend.schemas.inventory import ShoppingListItem
-from backend.schemas.recommend import PlanDish, RecommendationPlan, RecommendRequest, RecommendResponse
+from backend.schemas.recommend import (
+    PlanDish,
+    RecommendationPlan,
+    RecommendRequest,
+    RecommendResponse,
+    WeeklyPlanDay,
+    WeeklyRecommendResponse,
+)
 from backend.schemas.recipe import RecipeHit
 from backend.services.ingredient_service import (
     ensure_category_key,
@@ -32,15 +39,39 @@ from backend.services.llm_service import chat, is_configured as llm_is_configure
 logger = logging.getLogger(__name__)
 
 
+def _build_athlete_context(profile: dict) -> dict[str, object]:
+    body = profile["profile"]
+    return {
+        "sport_type": (body.get("sport_type") or "").strip(),
+        "training_days_per_week": int(body.get("training_days_per_week") or 0),
+        "training_intensity": (body.get("training_intensity") or "").strip(),
+        "competition_cycle": (body.get("competition_cycle") or "").strip(),
+        "training_notes": (body.get("training_notes") or "").strip(),
+    }
+
+
 def _summarize_profile(profile: dict) -> tuple[str, list[str], list[str]]:
     body = profile["profile"]
     preferences = profile["preferences"]
+    athlete_context = _build_athlete_context(profile)
     summary_parts = [
         f"目标：{body['goal']}",
         f"人数：{body['household_size']}",
         f"工作日预算：{body['time_budget_minutes']} 分钟",
         f"每周采购：{body.get('purchase_frequency_per_week', 2)} 次",
     ]
+    if body.get("bmi") is not None:
+        summary_parts.append(f"BMI：{body['bmi']}")
+    if athlete_context["sport_type"]:
+        summary_parts.append(f"项目：{athlete_context['sport_type']}")
+    if athlete_context["training_days_per_week"]:
+        summary_parts.append(f"训练频次：每周 {athlete_context['training_days_per_week']} 天")
+    if athlete_context["training_intensity"]:
+        summary_parts.append(f"训练强度：{athlete_context['training_intensity']}")
+    if athlete_context["competition_cycle"]:
+        summary_parts.append(f"赛事周期：{athlete_context['competition_cycle']}")
+    if athlete_context["training_notes"]:
+        summary_parts.append(f"训练备注：{athlete_context['training_notes']}")
     if preferences["dislikes"]:
         summary_parts.append(f"忌口：{', '.join(preferences['dislikes'])}")
     if preferences["health_constraints"]:
@@ -99,6 +130,7 @@ def _feedback_preference_weights(user_id: str) -> dict[str, float]:
 
 def _explicit_preference_weights(profile: dict) -> dict[str, float]:
     preferences = profile["preferences"]
+    athlete_context = _build_athlete_context(profile)
     weights: dict[str, float] = {}
 
     def add_weight(key: str, value: float) -> None:
@@ -139,6 +171,32 @@ def _explicit_preference_weights(profile: dict) -> dict[str, float]:
         add_weight("B", 1.0)
         add_weight("C", 2.5)
         add_weight("进阶", 1.6)
+
+    if athlete_context["training_days_per_week"] and int(athlete_context["training_days_per_week"]) >= 5:
+        add_weight("快手菜", 1.0)
+        add_weight("A", 0.5)
+
+    training_intensity = str(athlete_context["training_intensity"] or "")
+    competition_cycle = str(athlete_context["competition_cycle"] or "")
+
+    if training_intensity in {"high", "double_session"}:
+        add_weight("high_protein", 2.0)
+        add_weight("高蛋白", 1.4)
+    elif training_intensity == "moderate":
+        add_weight("high_protein", 1.0)
+
+    if competition_cycle in {"base", "build"}:
+        add_weight("high_protein", 1.5)
+        add_weight("高蛋白", 1.0)
+    elif competition_cycle in {"taper", "competition"}:
+        add_weight("清淡", 1.4)
+        add_weight("low_sodium", 1.2)
+        add_weight("A", 0.8)
+        add_weight("B", 0.8)
+    elif competition_cycle == "recovery":
+        add_weight("high_protein", 1.4)
+        add_weight("low_sodium", 1.0)
+        add_weight("汤", 1.0)
 
     return weights
 
@@ -539,19 +597,18 @@ async def _fallback_plan_build(
     return plans
 
 
-async def recommend(request: RecommendRequest) -> RecommendResponse:
-    request_id = f"req_{uuid.uuid4().hex[:8]}"
+def _load_request_state(request: RecommendRequest) -> dict[str, object]:
     inventory_items = list_inventory(request.user_id)
     inventory_tokens = [item["normalized_name"] for item in inventory_items]
     expiring_inventory_tokens = {
         item["normalized_name"] for item in inventory_items if item.get("status") == "expiring_soon"
     }
     profile = get_profile(request.user_id)
-
     if profile is None:
         raise ValueError("User profile not found")
 
     profile_summary, health_constraints, preference_signals = _summarize_profile(profile)
+    athlete_context = _build_athlete_context(profile)
     household_size = int(profile["profile"].get("household_size") or 1)
     purchase_frequency_per_week = int(profile["profile"].get("purchase_frequency_per_week") or 2)
     time_budget = int(
@@ -559,8 +616,98 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
         or profile["profile"]["time_budget_minutes"]
         or 20
     )
-    preference_weights = _preference_weights(request.user_id, profile)
-    recent_recipe_ids = _recent_recipe_ids(request.user_id)
+
+    return {
+        "inventory_items": inventory_items,
+        "inventory_tokens": inventory_tokens,
+        "expiring_inventory_tokens": expiring_inventory_tokens,
+        "profile": profile,
+        "profile_summary": profile_summary,
+        "health_constraints": health_constraints,
+        "preference_signals": preference_signals,
+        "athlete_context": athlete_context,
+        "household_size": household_size,
+        "purchase_frequency_per_week": purchase_frequency_per_week,
+        "time_budget": time_budget,
+        "preference_weights": _preference_weights(request.user_id, profile),
+        "recent_recipe_ids": _recent_recipe_ids(request.user_id),
+    }
+
+
+def _build_strategy_summary(
+    *,
+    request_tags: list[str],
+    health_constraints: list[str],
+    time_budget: int,
+    preference_signals: list[str],
+    athlete_context: dict[str, object],
+    llm_strategy_summary: str | None = None,
+) -> str:
+    if llm_strategy_summary:
+        return llm_strategy_summary
+
+    strategy_parts = [
+        "临期优先" if "消耗临期" in request_tags else "库存优先",
+        "特殊约束已过滤" if health_constraints else "通用饮食规则",
+        f"时间预算 {time_budget} 分钟",
+    ]
+    if preference_signals:
+        strategy_parts.append(f"偏好加权 {', '.join(preference_signals[:3])}")
+    if athlete_context.get("competition_cycle"):
+        strategy_parts.append(f"赛事周期 {athlete_context['competition_cycle']}")
+    if athlete_context.get("training_intensity"):
+        strategy_parts.append(f"训练强度 {athlete_context['training_intensity']}")
+    return "，".join(strategy_parts)
+
+
+def _weekly_focus_sequence(athlete_context: dict[str, object]) -> list[str]:
+    competition_cycle = str(athlete_context.get("competition_cycle") or "")
+    training_intensity = str(athlete_context.get("training_intensity") or "")
+    if competition_cycle in {"taper", "competition"}:
+        return ["稳态补给", "赛前轻负担", "易消化主菜"]
+    if competition_cycle == "recovery":
+        return ["恢复修复", "高蛋白修复", "轻负担补水"]
+    if competition_cycle in {"base", "build"} or training_intensity in {"high", "double_session"}:
+        return ["训练后补能", "高蛋白主菜", "均衡加餐日"]
+    return ["库存优先", "快手补能", "均衡家常"]
+
+
+def _weekly_training_hint(athlete_context: dict[str, object], day_index: int) -> str:
+    competition_cycle = str(athlete_context.get("competition_cycle") or "")
+    training_intensity = str(athlete_context.get("training_intensity") or "")
+    hints = _weekly_focus_sequence(athlete_context)
+    base_hint = hints[day_index % len(hints)]
+    if competition_cycle in {"taper", "competition"}:
+        return f"{base_hint}，控制油腻和陌生食材。"
+    if competition_cycle == "recovery":
+        return f"{base_hint}，优先蛋白质和补水。"
+    if training_intensity in {"high", "double_session"}:
+        return f"{base_hint}，注意训练后尽快进食。"
+    return f"{base_hint}，优先保持库存消耗效率。"
+
+
+def _build_weekly_day_labels() -> list[str]:
+    weekday_map = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    today = date.today()
+    return [weekday_map[(today.weekday() + offset) % 7] for offset in range(7)]
+
+
+async def recommend(request: RecommendRequest) -> RecommendResponse:
+    request_id = f"req_{uuid.uuid4().hex[:8]}"
+    state = _load_request_state(request)
+    inventory_items = state["inventory_items"]
+    inventory_tokens = state["inventory_tokens"]
+    expiring_inventory_tokens = state["expiring_inventory_tokens"]
+    profile = state["profile"]
+    profile_summary = state["profile_summary"]
+    health_constraints = state["health_constraints"]
+    preference_signals = state["preference_signals"]
+    athlete_context = state["athlete_context"]
+    household_size = int(state["household_size"])
+    purchase_frequency_per_week = int(state["purchase_frequency_per_week"])
+    time_budget = int(state["time_budget"])
+    preference_weights = state["preference_weights"]
+    recent_recipe_ids = state["recent_recipe_ids"]
 
     plans: list[RecommendationPlan] = []
     generated_recipes: dict[str, dict[str, object]] = {}
@@ -595,6 +742,7 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
             time_budget_minutes=time_budget,
             preference_weights=preference_weights,
             recent_recipe_ids=recent_recipe_ids,
+            athlete_context=athlete_context,
         )
         candidate_map = {hit.recipe_id: hit for hit in hits}
         if llm_selection and llm_selection.get("mode") == "selection":
@@ -673,22 +821,188 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
             "plans": [plan.model_dump() for plan in plans],
             "generated_recipes": generated_recipes,
             "tags": request.tags,
+            "mode": "single",
         },
     )
-
-    strategy_parts = [
-        "临期优先" if "消耗临期" in request.tags else "库存优先",
-        "特殊约束已过滤" if health_constraints else "通用饮食规则",
-        f"时间预算 {time_budget} 分钟",
-    ]
-    if preference_signals:
-        strategy_parts.append(f"偏好加权 {', '.join(preference_signals[:3])}")
 
     return RecommendResponse(
         request_id=request_id,
         profile_summary=profile_summary,
-        strategy_summary=llm_strategy_summary or "，".join(strategy_parts),
+        strategy_summary=_build_strategy_summary(
+            request_tags=request.tags,
+            health_constraints=health_constraints,
+            time_budget=time_budget,
+            preference_signals=preference_signals,
+            athlete_context=athlete_context,
+            llm_strategy_summary=llm_strategy_summary,
+        ),
         plans=plans,
         shopping_suggestions=shopping_suggestions,
         debug_retrieval=hits[:8] if not generated_recipes else [],
+    )
+
+
+async def recommend_weekly(request: RecommendRequest) -> WeeklyRecommendResponse:
+    request_id = f"week_{uuid.uuid4().hex[:8]}"
+    state = _load_request_state(request)
+    inventory_items = state["inventory_items"]
+    inventory_tokens = state["inventory_tokens"]
+    expiring_inventory_tokens = state["expiring_inventory_tokens"]
+    profile = state["profile"]
+    profile_summary = state["profile_summary"]
+    health_constraints = state["health_constraints"]
+    preference_signals = state["preference_signals"]
+    athlete_context = state["athlete_context"]
+    household_size = int(state["household_size"])
+    purchase_frequency_per_week = int(state["purchase_frequency_per_week"])
+    time_budget = int(state["time_budget"])
+    preference_weights = state["preference_weights"]
+    recent_recipe_ids = state["recent_recipe_ids"]
+
+    knowledge = get_knowledge_service()
+    hits = knowledge.list_candidate_hits(
+        inventory_tokens=inventory_tokens,
+        expiring_inventory_tokens=expiring_inventory_tokens,
+        constraints=health_constraints,
+        goal=profile["profile"]["goal"],
+        explicit_tags=request.tags,
+        time_budget_minutes=time_budget,
+        preference_weights=preference_weights,
+        recent_recipe_ids=recent_recipe_ids,
+        athlete_context=athlete_context,
+    )
+
+    full_hits = [hit for hit in hits if not hit.missing_ingredients]
+    unique_weekly_hits: list[RecipeHit] = []
+    seen_recipe_ids: set[str] = set()
+    for hit in full_hits:
+        if hit.recipe_id in seen_recipe_ids:
+            continue
+        unique_weekly_hits.append(hit)
+        seen_recipe_ids.add(hit.recipe_id)
+        if len(unique_weekly_hits) >= 5:
+            break
+
+    shopping_suggestions = _build_shopping_suggestions(
+        hits,
+        inventory_empty=not inventory_items,
+        household_size=household_size,
+        purchase_frequency_per_week=purchase_frequency_per_week,
+    )
+
+    strategy_summary = _build_strategy_summary(
+        request_tags=request.tags,
+        health_constraints=health_constraints,
+        time_budget=time_budget,
+        preference_signals=preference_signals,
+        athlete_context=athlete_context,
+    )
+
+    if len(unique_weekly_hits) < 4:
+        blocking_reasons = [
+            "当前库存可直接完成的主菜不足 4 道，无法稳定覆盖一周。",
+            "先补齐关键蛋白质和蔬菜，再生成完整周食谱。",
+        ]
+        replace_shopping_list_items(
+            request.user_id,
+            [
+                {
+                    "id": item.id,
+                    "display_name": item.display_name,
+                    "normalized_name": item.normalized_name,
+                    "category": item.category,
+                    "quantity_text": item.quantity_text,
+                    "recommended_quantity_text": item.recommended_quantity_text,
+                    "reason": item.reason,
+                    "priority": item.priority,
+                    "source": item.source,
+                    "checked": item.checked,
+                }
+                for item in shopping_suggestions
+            ],
+        )
+        record_recommendation(
+            request.user_id,
+            {
+                "request_id": request_id,
+                "mode": "weekly_blocked",
+                "tags": request.tags,
+                "blocking_reasons": blocking_reasons,
+                "shopping_suggestions": [item.model_dump() for item in shopping_suggestions],
+            },
+        )
+        return WeeklyRecommendResponse(
+            status="needs_ingredients",
+            request_id=request_id,
+            profile_summary=profile_summary,
+            strategy_summary=f"{strategy_summary}，当前库存不足以直接排出 7 天主餐。",
+            shopping_suggestions=shopping_suggestions,
+            required_ingredients=shopping_suggestions,
+            blocking_reasons=blocking_reasons,
+        )
+
+    day_labels = _build_weekly_day_labels()
+    focus_labels = _weekly_focus_sequence(athlete_context)
+    weekly_days: list[WeeklyPlanDay] = []
+    previous_recipe_id: str | None = None
+
+    for index, day_label in enumerate(day_labels):
+        hit = unique_weekly_hits[index % len(unique_weekly_hits)]
+        if previous_recipe_id and hit.recipe_id == previous_recipe_id and len(unique_weekly_hits) > 1:
+            hit = unique_weekly_hits[(index + 1) % len(unique_weekly_hits)]
+        previous_recipe_id = hit.recipe_id
+        plan = await _build_plan_from_hit(
+            hit=hit,
+            plan_id=hit.difficulty,
+            reason=None,
+            fit_tags=None,
+            profile_summary=profile_summary,
+            plan_map={"A": "极简", "B": "标准", "C": "进阶"},
+        )
+        weekly_days.append(
+            WeeklyPlanDay(
+                day_label=day_label,
+                focus=focus_labels[index % len(focus_labels)],
+                training_hint=_weekly_training_hint(athlete_context, index),
+                plan=plan,
+            )
+        )
+
+    replace_shopping_list_items(
+        request.user_id,
+        [
+            {
+                "id": item.id,
+                "display_name": item.display_name,
+                "normalized_name": item.normalized_name,
+                "category": item.category,
+                "quantity_text": item.quantity_text,
+                "recommended_quantity_text": item.recommended_quantity_text,
+                "reason": item.reason,
+                "priority": item.priority,
+                "source": item.source,
+                "checked": item.checked,
+            }
+            for item in shopping_suggestions
+        ],
+    )
+    record_recommendation(
+        request.user_id,
+        {
+            "request_id": request_id,
+            "mode": "weekly_ready",
+            "tags": request.tags,
+            "weekly_days": [day.model_dump() for day in weekly_days],
+        },
+    )
+
+    return WeeklyRecommendResponse(
+        status="ready",
+        request_id=request_id,
+        profile_summary=profile_summary,
+        strategy_summary=f"{strategy_summary}，按现有库存排出 7 天主餐。",
+        days=weekly_days,
+        shopping_suggestions=shopping_suggestions,
+        required_ingredients=[],
+        blocking_reasons=[],
     )

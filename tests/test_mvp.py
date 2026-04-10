@@ -14,6 +14,7 @@ from backend.core.config import OPENROUTER_RECIPE_MODEL
 from backend.database import (
     add_manual_shopping_item,
     add_shopping_items_to_inventory,
+    get_profile,
     init_db,
     list_shopping_list_items,
     record_feedback_event,
@@ -35,7 +36,7 @@ from backend.services.ingredient_service import (
     parse_freeform_inventory_text,
 )
 from backend.services.knowledge_service import get_knowledge_service
-from backend.services.orchestrator import recommend
+from backend.services.orchestrator import recommend, recommend_weekly
 from backend.services.video_reference_service import VideoReferenceService
 
 
@@ -582,6 +583,176 @@ class LightTableMVPTests(unittest.TestCase):
         reference = service.get_video_reference("番茄豆腐蛋花汤")
         self.assertEqual(reference.provider, "rednote_search_url")
         self.assertIn("xiaohongshu.com", reference.url)
+
+    def test_profile_exposes_bmi_and_athlete_fields(self) -> None:
+        update_body_profile(
+            "default",
+            height=180,
+            weight=72,
+            sport_type="羽毛球",
+            training_days_per_week=5,
+            training_intensity="high",
+            competition_cycle="build",
+            training_notes="周二力量，周六对抗。",
+        )
+
+        profile = get_profile("default")
+        self.assertIsNotNone(profile)
+        assert profile is not None
+        self.assertEqual(profile["profile"]["bmi"], 22.2)
+        self.assertEqual(profile["profile"]["sport_type"], "羽毛球")
+        self.assertEqual(profile["profile"]["training_days_per_week"], 5)
+        self.assertEqual(profile["profile"]["training_intensity"], "high")
+        self.assertEqual(profile["profile"]["competition_cycle"], "build")
+
+    def test_inventory_endpoint_returns_macro_estimates(self) -> None:
+        upsert_inventory_items(
+            "default",
+            [build_inventory_candidate("鸡蛋", quantity_text="2个")],
+        )
+
+        client = TestClient(app)
+        response = client.get("/api/v1/inventory/default")
+        self.assertEqual(response.status_code, 200)
+        egg = next(item for item in response.json()["items"] if item["normalized_name"] == "egg")
+        self.assertAlmostEqual(egg["macros"]["protein_g"], 12.6, places=1)
+        self.assertAlmostEqual(egg["macros"]["fat_g"], 10.6, places=1)
+        self.assertTrue(egg["macros"]["estimated"])
+
+    def test_athlete_context_is_passed_into_recommendation_scoring(self) -> None:
+        update_body_profile(
+            "default",
+            sport_type="游泳",
+            training_days_per_week=6,
+            training_intensity="double_session",
+            competition_cycle="build",
+        )
+
+        captured: dict[str, object] = {}
+
+        class StubKnowledgeService:
+            recipes = []
+
+            def list_candidate_hits(self, **kwargs):
+                captured.update(kwargs)
+                return []
+
+        with patch("backend.services.orchestrator.get_knowledge_service", return_value=StubKnowledgeService()):
+            asyncio.run(recommend(RecommendRequest(user_id="default", tags=["增肌"])))
+
+        self.assertEqual(captured["athlete_context"]["training_intensity"], "double_session")
+        self.assertEqual(captured["athlete_context"]["competition_cycle"], "build")
+        weights = captured["preference_weights"]
+        self.assertGreater(weights["high_protein"], 0)
+
+    def test_weekly_recommend_blocks_until_key_ingredients_are_added(self) -> None:
+        class StubKnowledgeService:
+            recipes = []
+
+            def list_candidate_hits(self, **kwargs):
+                del kwargs
+                return [
+                    RecipeHit(
+                        recipe_id="r_001",
+                        title="番茄豆腐蛋花汤",
+                        tags=["汤"],
+                        difficulty="A",
+                        time_minutes=15,
+                        matched_ingredients=["番茄"],
+                        missing_ingredients=[],
+                        fit_tags=["快手"],
+                        score=8.0,
+                    ),
+                    RecipeHit(
+                        recipe_id="r_002",
+                        title="青椒鸡胸肉快炒",
+                        tags=["炒"],
+                        difficulty="A",
+                        time_minutes=18,
+                        matched_ingredients=["鸡胸肉"],
+                        missing_ingredients=[],
+                        fit_tags=["高蛋白"],
+                        score=7.5,
+                    ),
+                    RecipeHit(
+                        recipe_id="r_003",
+                        title="西兰花虾仁",
+                        tags=["清淡"],
+                        difficulty="B",
+                        time_minutes=20,
+                        matched_ingredients=["虾仁"],
+                        missing_ingredients=[],
+                        fit_tags=["恢复友好"],
+                        score=7.2,
+                    ),
+                ]
+
+        with patch("backend.services.orchestrator.get_knowledge_service", return_value=StubKnowledgeService()):
+            result = asyncio.run(recommend_weekly(RecommendRequest(user_id="default", tags=["运动后恢复"])))
+
+        self.assertEqual(result.status, "needs_ingredients")
+        self.assertGreaterEqual(len(result.required_ingredients), 1)
+        self.assertTrue(result.blocking_reasons)
+
+    def test_weekly_recommend_returns_seven_days_when_inventory_is_sufficient(self) -> None:
+        class StubKnowledgeService:
+            recipes = []
+
+            def list_candidate_hits(self, **kwargs):
+                del kwargs
+                return [
+                    RecipeHit(
+                        recipe_id="r_001",
+                        title="番茄豆腐蛋花汤",
+                        tags=["汤"],
+                        difficulty="A",
+                        time_minutes=15,
+                        matched_ingredients=["番茄", "豆腐", "鸡蛋"],
+                        missing_ingredients=[],
+                        fit_tags=["快手"],
+                        score=8.0,
+                    ),
+                    RecipeHit(
+                        recipe_id="r_002",
+                        title="青椒鸡胸肉快炒",
+                        tags=["炒"],
+                        difficulty="A",
+                        time_minutes=18,
+                        matched_ingredients=["鸡胸肉", "青椒"],
+                        missing_ingredients=[],
+                        fit_tags=["高蛋白"],
+                        score=7.8,
+                    ),
+                    RecipeHit(
+                        recipe_id="r_003",
+                        title="西兰花虾仁",
+                        tags=["清淡"],
+                        difficulty="B",
+                        time_minutes=20,
+                        matched_ingredients=["西兰花", "虾仁"],
+                        missing_ingredients=[],
+                        fit_tags=["恢复友好"],
+                        score=7.4,
+                    ),
+                    RecipeHit(
+                        recipe_id="r_004",
+                        title="香菇豆腐煲",
+                        tags=["煲"],
+                        difficulty="B",
+                        time_minutes=25,
+                        matched_ingredients=["豆腐", "香菇"],
+                        missing_ingredients=[],
+                        fit_tags=["家常"],
+                        score=7.0,
+                    ),
+                ]
+
+        with patch("backend.services.orchestrator.get_knowledge_service", return_value=StubKnowledgeService()):
+            result = asyncio.run(recommend_weekly(RecommendRequest(user_id="default", tags=["增肌"])))
+
+        self.assertEqual(result.status, "ready")
+        self.assertEqual(len(result.days), 7)
+        self.assertTrue(all(day.plan.dishes for day in result.days))
 
 
 if __name__ == "__main__":

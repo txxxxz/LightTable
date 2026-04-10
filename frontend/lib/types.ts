@@ -3,6 +3,8 @@ export type StorageType = "fridge" | "freezer" | "pantry";
 export type SourceType = "manual_text" | "manual_form" | "image" | "receipt";
 export type Goal = "fat_loss" | "maintain" | "muscle_gain";
 export type CookingLevel = "survival" | "home_cook" | "chef";
+export type TrainingIntensity = "low" | "moderate" | "high" | "double_session";
+export type CompetitionCycle = "base" | "build" | "taper" | "competition" | "recovery";
 export type InventoryCategory =
   | "dairy"
   | "vegetables_tofu"
@@ -14,6 +16,13 @@ export type InventoryCategory =
   | "ready_meals"
   | "beverages"
   | "fruit_snacks";
+
+export type InventoryMacros = {
+  carbsG?: number | null;
+  proteinG?: number | null;
+  fatG?: number | null;
+  estimated: boolean;
+};
 
 export type InventoryItem = {
   id: string;
@@ -28,6 +37,7 @@ export type InventoryItem = {
   status: IngredientStatus;
   sourceType: SourceType;
   imageUrl?: string | null;
+  macros?: InventoryMacros | null;
 };
 
 export type ShoppingListItem = {
@@ -53,6 +63,24 @@ export type RecommendationPlan = {
   difficulty: string;
   fitTags: string[];
   reason: string;
+};
+
+export type WeeklyPlanDay = {
+  dayLabel: string;
+  focus: string;
+  trainingHint: string;
+  plan: RecommendationPlan;
+};
+
+export type WeeklyRecommendResponse = {
+  status: "ready" | "needs_ingredients";
+  requestId: string;
+  profileSummary: string;
+  strategySummary: string;
+  days: WeeklyPlanDay[];
+  shoppingSuggestions: ShoppingListItem[];
+  requiredIngredients: ShoppingListItem[];
+  blockingReasons: string[];
 };
 
 export type VideoReference = {
@@ -84,10 +112,16 @@ export type UserProfileResponse = {
   profile: {
     height: number;
     weight: number;
+    bmi?: number | null;
     goal: Goal;
     household_size: number;
     time_budget_minutes: number;
     purchase_frequency_per_week: number;
+    sport_type?: string | null;
+    training_days_per_week?: number | null;
+    training_intensity?: TrainingIntensity | null;
+    competition_cycle?: CompetitionCycle | null;
+    training_notes?: string | null;
   };
   preferences: {
     dislikes: string[];
