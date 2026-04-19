@@ -605,6 +605,16 @@ class LightTableMVPTests(unittest.TestCase):
         self.assertEqual(profile["profile"]["training_intensity"], "high")
         self.assertEqual(profile["profile"]["competition_cycle"], "build")
 
+    def test_profile_endpoint_creates_new_browser_user(self) -> None:
+        client = TestClient(app)
+        user_id = "user_browser_probe"
+
+        response = client.get(f"/api/v1/user/profile?user_id={user_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["profile"]["height"], 170)
+        self.assertIsNotNone(get_profile(user_id))
+
     def test_inventory_endpoint_returns_macro_estimates(self) -> None:
         upsert_inventory_items(
             "default",

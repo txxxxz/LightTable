@@ -179,6 +179,49 @@ def _compute_bmi(height_cm: int | float | None, weight_kg: int | float | None) -
     return round(float(weight_kg) / (height_m * height_m), 1)
 
 
+def _insert_default_user(conn: sqlite3.Connection, user_id: str) -> None:
+    now = _utc_now()
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO user (
+            id, height, weight, goal, dislikes, cooking_level, flavor_tags,
+            cuisine_tags, method_tags, health_constraints, kitchen_tools,
+            household_size, time_budget_minutes, purchase_frequency_per_week,
+            sport_type, training_days_per_week, training_intensity, competition_cycle,
+            training_notes,
+            expiry_alert, debug_mode,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            170,
+            65.0,
+            "maintain",
+            "[]",
+            "home_cook",
+            "[]",
+            "[]",
+            "[]",
+            "[]",
+            "[]",
+            2,
+            20,
+            2,
+            "",
+            None,
+            "",
+            "",
+            "",
+            1,
+            0,
+            now,
+            now,
+        ),
+    )
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(USER_SCHEMA)
@@ -196,48 +239,14 @@ def init_db() -> None:
                 if "duplicate column" not in str(exc).lower():
                     raise
 
-        cur = conn.execute("SELECT 1 FROM user WHERE id = ?", (DEFAULT_USER_ID,))
-        if cur.fetchone() is None:
-            now = _utc_now()
-            conn.execute(
-                """
-                INSERT INTO user (
-                    id, height, weight, goal, dislikes, cooking_level, flavor_tags,
-                    cuisine_tags, method_tags, health_constraints, kitchen_tools,
-                    household_size, time_budget_minutes, purchase_frequency_per_week,
-                    sport_type, training_days_per_week, training_intensity, competition_cycle,
-                    training_notes,
-                    expiry_alert, debug_mode,
-                    created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    DEFAULT_USER_ID,
-                    170,
-                    65.0,
-                    "maintain",
-                    "[]",
-                    "home_cook",
-                    "[]",
-                    "[]",
-                    "[]",
-                    "[]",
-                    "[]",
-                    2,
-                    20,
-                    2,
-                    "",
-                    None,
-                    "",
-                    "",
-                    "",
-                    1,
-                    0,
-                    now,
-                    now,
-                ),
-            )
+        _insert_default_user(conn, DEFAULT_USER_ID)
+
+
+def ensure_user(user_id: str) -> str:
+    target_user_id = (user_id or DEFAULT_USER_ID).strip() or DEFAULT_USER_ID
+    with get_connection() as conn:
+        _insert_default_user(conn, target_user_id)
+    return target_user_id
 
 
 def get_user_row(user_id: str) -> dict[str, Any] | None:
@@ -247,6 +256,7 @@ def get_user_row(user_id: str) -> dict[str, Any] | None:
 
 
 def get_profile(user_id: str) -> dict[str, Any] | None:
+    user_id = ensure_user(user_id)
     row = get_user_row(user_id)
     if not row:
         return None
