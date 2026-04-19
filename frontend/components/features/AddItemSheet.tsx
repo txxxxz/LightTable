@@ -7,9 +7,10 @@ import { parseInventoryText, recognizeInventory } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import {
   getInventoryCategoryLabel,
-  INVENTORY_CATEGORY_OPTIONS,
+  getInventoryCategoryOptions,
   normalizeInventoryCategory,
 } from "@/lib/inventory-categories";
+import { pickByLocale, useLocale } from "@/lib/i18n";
 import type { InventoryItem } from "@/lib/types";
 import { getUserId } from "@/lib/user";
 
@@ -30,10 +31,12 @@ export function AddItemSheet({
   onClose: () => void;
   confirmLabel?: string;
 }) {
+  const locale = useLocale();
   const [phase, setPhase] = useState<"loading" | "list" | "error">("loading");
   const [items, setItems] = useState<DraftItem[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const categoryOptions = getInventoryCategoryOptions(locale);
 
   useEffect(() => {
     if (!file) {
@@ -69,8 +72,13 @@ export function AddItemSheet({
       } catch (cause) {
         if (cancelled) return;
         console.error(cause);
-        const nextError = cause instanceof Error ? cause.message.replace(/[:：]\s*$/, "") : "识别失败，请稍后重试";
-        setError(nextError || "识别失败，请稍后重试");
+        const fallbackError = pickByLocale(locale, {
+          zh: "识别失败，请稍后重试",
+          en: "Recognition failed. Please try again.",
+        });
+        const nextError =
+          cause instanceof Error ? cause.message.replace(/[:：]\s*$/, "") : fallbackError;
+        setError(nextError || fallbackError);
         setPhase("error");
       }
     }
@@ -108,7 +116,7 @@ export function AddItemSheet({
               type="button"
               onClick={onClose}
               className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-lg bg-black/40 text-white"
-              aria-label="关闭"
+              aria-label={pickByLocale(locale, { zh: "关闭", en: "Close" })}
             >
               ×
             </button>
@@ -116,12 +124,12 @@ export function AddItemSheet({
               {previewUrl ? (
                 <img
                   src={previewUrl}
-                  alt="预览"
+                  alt={pickByLocale(locale, { zh: "预览", en: "Preview" })}
                   className="h-full max-h-[68vh] w-full object-contain"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-sm text-zinc-300">
-                  正在生成预览…
+                  {pickByLocale(locale, { zh: "正在生成预览…", en: "Generating preview..." })}
                 </div>
               )}
             </div>
@@ -132,14 +140,19 @@ export function AddItemSheet({
               type="button"
               onClick={onClose}
               className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-lg bg-background text-text-main"
-              aria-label="关闭"
+              aria-label={pickByLocale(locale, { zh: "关闭", en: "Close" })}
             >
               ×
             </button>
-            <p className="text-sm font-medium text-text-muted">模糊输入预览</p>
+            <p className="text-sm font-medium text-text-muted">
+              {pickByLocale(locale, { zh: "模糊输入预览", en: "Text input preview" })}
+            </p>
             <p className="mt-3 text-base leading-7 text-text-main">{rawText}</p>
             <p className="mt-4 text-sm text-text-muted">
-              系统会先做标准化和分类预测，再让你确认后写入真实库存。
+              {pickByLocale(locale, {
+                zh: "系统会先做标准化和分类预测，再让你确认后写入真实库存。",
+                en: "The system will normalize and categorize items first, then let you confirm before saving to inventory.",
+              })}
             </p>
           </div>
         )}
@@ -147,12 +160,18 @@ export function AddItemSheet({
         <div className="flex min-h-0 flex-1 flex-col rounded-t-[24px] border-t border-border bg-surface lg:rounded-none lg:border-t-0">
           <div className="flex-1 overflow-y-auto p-4 lg:p-6">
             {phase === "loading" && (
-              <p className="py-6 text-center text-text-muted">正在解析食材…</p>
+              <p className="py-6 text-center text-text-muted">
+                {pickByLocale(locale, { zh: "正在解析食材…", en: "Parsing ingredients..." })}
+              </p>
             )}
 
             {phase === "error" && (
               <div className="rounded-2xl border border-alert/20 bg-alert-bg px-4 py-3 text-sm text-alert">
-                {error || "识别失败，请稍后重试。"}
+                {error ||
+                  pickByLocale(locale, {
+                    zh: "识别失败，请稍后重试。",
+                    en: "Recognition failed. Please try again.",
+                  })}
               </div>
             )}
 
@@ -189,7 +208,8 @@ export function AddItemSheet({
                         </div>
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px]">
                           <div className="text-xs text-text-muted">
-                            归一名称：{item.normalizedName}
+                            {pickByLocale(locale, { zh: "归一名称", en: "Normalized name" })}:{" "}
+                            {item.normalizedName}
                           </div>
                           <select
                             value={item.category}
@@ -198,7 +218,7 @@ export function AddItemSheet({
                             }
                             className="w-full rounded-xl border border-border bg-surface px-3 py-3 text-sm text-text-main"
                           >
-                            {INVENTORY_CATEGORY_OPTIONS.map((option) => (
+                            {categoryOptions.map((option) => (
                               <option key={option.value} value={option.value}>
                                 {option.label}
                               </option>
@@ -206,7 +226,8 @@ export function AddItemSheet({
                           </select>
                         </div>
                         <p className="text-xs text-text-muted">
-                          当前分类：{getInventoryCategoryLabel(item.category)}
+                          {pickByLocale(locale, { zh: "当前分类", en: "Current category" })}:{" "}
+                          {getInventoryCategoryLabel(item.category, locale)}
                         </p>
                       </div>
                     </div>

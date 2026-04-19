@@ -1,23 +1,21 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { getIngredientStatusLabel, pickByLocale, useLocale } from "@/lib/i18n";
 import type { InventoryItem } from "@/lib/types";
 
-const statusConfig: Record<
-  InventoryItem["status"],
-  { label: string; bg: string; text: string }
-> = {
-  fresh: { label: "新鲜", bg: "bg-background", text: "text-text-muted" },
+const statusConfig: Record<InventoryItem["status"], { bg: string; text: string }> = {
+  fresh: { bg: "bg-background", text: "text-text-muted" },
   expiring_soon: {
-    label: "临期",
     bg: "bg-alert-bg",
     text: "text-alert",
   },
-  expired: { label: "过期", bg: "bg-alert-bg", text: "text-alert" },
+  expired: { bg: "bg-alert-bg", text: "text-alert" },
 };
 
 export function IngredientCard({ item }: { item: InventoryItem }) {
-  const { label, bg, text } = statusConfig[item.status];
+  const locale = useLocale();
+  const { bg, text } = statusConfig[item.status];
   const macros = item.macros;
   return (
     <li
@@ -47,18 +45,21 @@ export function IngredientCard({ item }: { item: InventoryItem }) {
           {macros ? (
             <>
               <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
-                碳水 {macros.carbsG ?? "-"}g
+                {pickByLocale(locale, { zh: "碳水", en: "Carbs" })} {macros.carbsG ?? "-"}g
               </span>
               <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
-                蛋白质 {macros.proteinG ?? "-"}g
+                {pickByLocale(locale, { zh: "蛋白质", en: "Protein" })} {macros.proteinG ?? "-"}g
               </span>
               <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
-                脂肪 {macros.fatG ?? "-"}g
+                {pickByLocale(locale, { zh: "脂肪", en: "Fat" })} {macros.fatG ?? "-"}g
               </span>
             </>
           ) : (
             <span className="rounded-full bg-background px-2 py-1 text-[11px] text-text-muted">
-              营养待补充
+              {pickByLocale(locale, {
+                zh: "营养待补充",
+                en: "Nutrition pending",
+              })}
             </span>
           )}
         </div>
@@ -70,7 +71,7 @@ export function IngredientCard({ item }: { item: InventoryItem }) {
           text
         )}
       >
-        {label}
+        {getIngredientStatusLabel(item.status, locale)}
       </span>
     </li>
   );

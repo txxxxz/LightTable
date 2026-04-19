@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { Camera } from "lucide-react";
 import { motion } from "framer-motion";
+import { pickByLocale, useLocale } from "@/lib/i18n";
 
 /**
  * 混合架构相机按钮：Web 下用 <input type="file" capture="environment" />，
@@ -14,6 +15,7 @@ export function SmartCameraButton({
   onCapture?: (file: File) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const locale = useLocale();
 
   const handleClick = () => {
     inputRef.current?.click();
@@ -43,7 +45,10 @@ export function SmartCameraButton({
         whileTap={{ scale: 0.95 }}
         onClick={handleClick}
         className="flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground hover:bg-primary-hover border border-border transition-colors"
-        aria-label="拍照识别食材"
+        aria-label={pickByLocale(locale, {
+          zh: "拍照识别食材",
+          en: "Use camera to recognize ingredients",
+        })}
       >
         <Camera className="w-6 h-6" strokeWidth={1.5} />
       </motion.button>

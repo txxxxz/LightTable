@@ -5,16 +5,33 @@ import { usePathname } from "next/navigation";
 import { Refrigerator, ShoppingCart, Sparkles, User } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/cn";
-
-const tabs = [
-  { path: "/inventory", label: "库存", Icon: Refrigerator },
-  { path: "/decide", label: "决策", Icon: Sparkles },
-  { path: "/shopping", label: "补货", Icon: ShoppingCart },
-  { path: "/settings", label: "设置", Icon: User },
-] as const;
+import { pickByLocale, useLocale } from "@/lib/i18n";
 
 export function BottomNav() {
   const pathname = usePathname();
+  const locale = useLocale();
+  const tabs = [
+    {
+      path: "/inventory",
+      label: pickByLocale(locale, { zh: "库存", en: "Inventory" }),
+      Icon: Refrigerator,
+    },
+    {
+      path: "/decide",
+      label: pickByLocale(locale, { zh: "决策", en: "Decide" }),
+      Icon: Sparkles,
+    },
+    {
+      path: "/shopping",
+      label: pickByLocale(locale, { zh: "补货", en: "Restock" }),
+      Icon: ShoppingCart,
+    },
+    {
+      path: "/settings",
+      label: pickByLocale(locale, { zh: "设置", en: "Settings" }),
+      Icon: User,
+    },
+  ] as const;
 
   return (
     <nav

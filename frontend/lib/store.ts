@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import type { Locale } from "./locale";
 import type { CookingLevel, Goal, RecommendationPlan, ShoppingListItem } from "./types";
 
 export interface DebugLog {
@@ -24,11 +25,13 @@ export interface RecommendationSnapshot {
 interface GlobalStore {
   system: {
     debugMode: boolean;
+    language: Locale;
   };
   debugLogs: DebugLog[];
   currentRecommendationId: string | null;
   recommendationSnapshots: Record<string, RecommendationSnapshot>;
   setDebugMode: (enabled: boolean) => void;
+  setLanguage: (language: Locale) => void;
   addDebugLog: (type: DebugLog["type"], message: string) => void;
   clearDebugLogs: () => void;
   setLastRecommendation: (snapshot: RecommendationSnapshot) => void;
@@ -40,6 +43,7 @@ export const useGlobalStore = create<GlobalStore>()(
     (set) => ({
       system: {
         debugMode: false,
+        language: "zh",
       },
       debugLogs: [],
       currentRecommendationId: null,
@@ -47,6 +51,10 @@ export const useGlobalStore = create<GlobalStore>()(
       setDebugMode: (enabled) =>
         set((state) => ({
           system: { ...state.system, debugMode: enabled },
+        })),
+      setLanguage: (language) =>
+        set((state) => ({
+          system: { ...state.system, language },
         })),
       addDebugLog: (type, message) =>
         set((state) => ({
@@ -79,6 +87,28 @@ export const useGlobalStore = create<GlobalStore>()(
     }),
     {
       name: "lighttable-debug",
+      version: 2,
+      migrate: (persistedState) => {
+        const state = (persistedState ?? {}) as Partial<GlobalStore>;
+        return {
+          ...state,
+          system: {
+            debugMode: state.system?.debugMode ?? false,
+            language: state.system?.language === "en" ? "en" : "zh",
+          },
+        } as GlobalStore;
+      },
+      merge: (persistedState, currentState) => {
+        const state = (persistedState ?? {}) as Partial<GlobalStore>;
+        return {
+          ...currentState,
+          ...state,
+          system: {
+            ...currentState.system,
+            ...state.system,
+          },
+        };
+      },
       partialize: (state) => ({
         system: state.system,
         currentRecommendationId: state.currentRecommendationId,

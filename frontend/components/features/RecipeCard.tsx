@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { pickByLocale, useLocale } from "@/lib/i18n";
 import type { RecommendationPlan } from "@/lib/types";
 
 export function RecipeCard({
@@ -12,6 +13,7 @@ export function RecipeCard({
   requestId?: string | null;
 }) {
   const router = useRouter();
+  const locale = useLocale();
   const primaryDish = plan.dishes[0];
   const recipeHref =
     primaryDish && primaryDish.recipeId ? `/recipe/${primaryDish.recipeId}` : null;
@@ -29,7 +31,14 @@ export function RecipeCard({
     <article
       role={recipeTarget ? "link" : undefined}
       tabIndex={recipeTarget ? 0 : -1}
-      aria-label={recipeTarget ? `查看菜谱 ${plan.dishes.map((dish) => dish.title).join(" + ")}` : undefined}
+      aria-label={
+        recipeTarget
+          ? pickByLocale(locale, {
+              zh: `查看菜谱 ${plan.dishes.map((dish) => dish.title).join(" + ")}`,
+              en: `View recipe ${plan.dishes.map((dish) => dish.title).join(" + ")}`,
+            })
+          : undefined
+      }
       onClick={handleOpenRecipe}
       onKeyDown={(event) => {
         if (!recipeTarget) return;
@@ -57,13 +66,13 @@ export function RecipeCard({
 
       {plan.matchedInventory.length > 0 && (
         <p className="mt-3 text-sm text-primary">
-          命中库存：{plan.matchedInventory.join("、")}
+          {pickByLocale(locale, { zh: "命中库存", en: "In stock" })}: {plan.matchedInventory.join("、")}
         </p>
       )}
 
       {plan.missingIngredients.length > 0 && (
         <p className="mt-1 text-xs text-text-muted">
-          还缺：{plan.missingIngredients.join("、")}
+          {pickByLocale(locale, { zh: "还缺", en: "Still need" })}: {plan.missingIngredients.join("、")}
         </p>
       )}
 
@@ -84,7 +93,15 @@ export function RecipeCard({
 
       <div className="mt-4 flex items-center justify-between">
         <span className="text-xs text-text-muted">
-          {recipeTarget ? "点击查看完整菜谱" : "当前方案没有可用详情页"}
+          {recipeTarget
+            ? pickByLocale(locale, {
+                zh: "点击查看完整菜谱",
+                en: "Tap to view full recipe",
+              })
+            : pickByLocale(locale, {
+                zh: "当前方案没有可用详情页",
+                en: "No detail page is available for this plan",
+              })}
         </span>
         {recipeTarget && (
           <button
@@ -95,7 +112,7 @@ export function RecipeCard({
             }}
             className="rounded-xl border border-primary px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/5"
           >
-            查看菜谱
+            {pickByLocale(locale, { zh: "查看菜谱", en: "View recipe" })}
           </button>
         )}
       </div>

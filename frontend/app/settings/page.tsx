@@ -35,14 +35,30 @@ import {
   patchSystemSettings,
   updatePreference,
 } from "@/lib/api";
+import {
+  getCompetitionCycleLabel,
+  getCompetitionCycleOptions,
+  getCookingLevelLabel,
+  getCookingLevelOptions,
+  getCuisineLabel,
+  getFlavorLabel,
+  getGoalLabel,
+  getGoalOptions,
+  getHealthConstraintLabel,
+  getKitchenToolLabel,
+  getLocalizedOptions,
+  getMethodLabel,
+  getTrainingIntensityLabel,
+  getTrainingIntensityOptions,
+  LANGUAGE_OPTIONS,
+  pickByLocale,
+} from "@/lib/i18n";
+import type { Locale } from "@/lib/locale";
 import { useGlobalStore } from "@/lib/store";
 import {
-  cookingLevelLabels,
   CUISINE_OPTIONS,
   FLAVOR_OPTIONS,
-  goalLabels,
   HEALTH_CONSTRAINT_OPTIONS,
-  healthConstraintLabels,
   KITCHEN_TOOL_OPTIONS,
   METHOD_OPTIONS,
 } from "@/lib/store";
@@ -55,33 +71,6 @@ import type {
 } from "@/lib/types";
 import { getUserId } from "@/lib/user";
 
-const GOAL_OPTIONS: { value: Goal; label: string; description: string }[] = [
-  { value: "fat_loss", label: "减脂", description: "控制热量摄入，优先轻盈但能吃饱的方案" },
-  { value: "maintain", label: "维持", description: "均衡饮食，优先实用和少浪费" },
-  { value: "muscle_gain", label: "增肌", description: "提高蛋白质密度，兼顾做饭效率" },
-];
-
-const COOKING_LEVEL_OPTIONS: { value: CookingLevel; label: string }[] = [
-  { value: "survival", label: "生存" },
-  { value: "home_cook", label: "家常" },
-  { value: "chef", label: "大厨" },
-];
-
-const TRAINING_INTENSITY_OPTIONS: { value: TrainingIntensity; label: string }[] = [
-  { value: "low", label: "轻量" },
-  { value: "moderate", label: "中等" },
-  { value: "high", label: "高强度" },
-  { value: "double_session", label: "双训" },
-];
-
-const COMPETITION_CYCLE_OPTIONS: { value: CompetitionCycle; label: string }[] = [
-  { value: "base", label: "基础期" },
-  { value: "build", label: "提升期" },
-  { value: "taper", label: "减量期" },
-  { value: "competition", label: "比赛期" },
-  { value: "recovery", label: "恢复期" },
-];
-
 type AthleteDraft = {
   sport_type: string;
   training_days_per_week: string;
@@ -92,7 +81,25 @@ type AthleteDraft = {
 
 export default function SettingsPage() {
   const userId = getUserId();
-  const { system, setDebugMode, addDebugLog } = useGlobalStore();
+  const { system, setDebugMode, setLanguage, addDebugLog } = useGlobalStore();
+  const locale = system.language;
+  const goalOptions = getGoalOptions(locale);
+  const cookingLevelOptions = getCookingLevelOptions(locale);
+  const trainingIntensityOptions = getTrainingIntensityOptions(locale);
+  const competitionCycleOptions = getCompetitionCycleOptions(locale);
+  const flavorOptions = getLocalizedOptions(FLAVOR_OPTIONS, getFlavorLabel, locale);
+  const cuisineOptions = getLocalizedOptions(CUISINE_OPTIONS, getCuisineLabel, locale);
+  const methodOptions = getLocalizedOptions(METHOD_OPTIONS, getMethodLabel, locale);
+  const healthConstraintOptions = getLocalizedOptions(
+    HEALTH_CONSTRAINT_OPTIONS,
+    getHealthConstraintLabel,
+    locale
+  );
+  const kitchenToolOptions = getLocalizedOptions(
+    KITCHEN_TOOL_OPTIONS,
+    getKitchenToolLabel,
+    locale
+  );
 
   const [data, setData] = useState<UserProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,11 +125,16 @@ export default function SettingsPage() {
       })
       .catch((error) => {
         console.error(error);
-        setError("暂时无法连接后端，请确认 API 服务已启动。");
+        setError(
+          pickByLocale(locale, {
+            zh: "暂时无法连接后端，请确认 API 服务已启动。",
+            en: "The backend is temporarily unreachable. Please make sure the API service is running.",
+          })
+        );
         addDebugLog("error", "[Settings] Failed to load profile");
       })
       .finally(() => setLoading(false));
-  }, [addDebugLog, setDebugMode, userId]);
+  }, [addDebugLog, locale, setDebugMode, userId]);
 
   useEffect(() => {
     if (!data) return;
@@ -141,7 +153,9 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <main className="px-4 py-8 lg:px-6">
-        <p className="text-text-muted">加载中...</p>
+        <p className="text-text-muted">
+          {pickByLocale(locale, { zh: "加载中...", en: "Loading..." })}
+        </p>
       </main>
     );
   }
@@ -149,7 +163,9 @@ export default function SettingsPage() {
   if (error || !data) {
     return (
       <main className="px-4 py-8 lg:px-6">
-        <p className="text-alert">{error || "设置加载失败"}</p>
+        <p className="text-alert">
+          {error || pickByLocale(locale, { zh: "设置加载失败", en: "Failed to load settings" })}
+        </p>
       </main>
     );
   }
@@ -170,7 +186,7 @@ export default function SettingsPage() {
   const handleGoalChange = async (goal: Goal) => {
     await patchBodyProfile(userId, { goal });
     const next = await refreshFromServer();
-    addDebugLog("mem0", `[Profile] goal -> ${goalLabels[next.profile.goal]}`);
+    addDebugLog("mem0", `[Profile] goal -> ${getGoalLabel(next.profile.goal, locale)}`);
     setGoalModalOpen(false);
   };
 
@@ -231,11 +247,17 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLanguageChange = (nextLanguage: Locale) => {
+    setLanguage(nextLanguage);
+  };
+
   return (
     <>
       <header className="sticky top-0 left-0 right-0 z-40 border-b border-zinc-200/80 bg-zinc-50/95 pt-safe backdrop-blur">
         <div className="flex h-14 items-center px-4 lg:px-6">
-          <h1 className="text-xl font-semibold text-zinc-900">Me</h1>
+          <h1 className="text-xl font-semibold text-zinc-900">
+            {pickByLocale(locale, { zh: "设置", en: "Settings" })}
+          </h1>
         </div>
       </header>
 
@@ -243,17 +265,36 @@ export default function SettingsPage() {
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
             <div className="space-y-6">
-              <SettingsGroup title="身体档案">
+              <SettingsGroup title={pickByLocale(locale, { zh: "通用", en: "General" })}>
+                <div className="bg-white px-4 py-3 lg:px-5">
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className="flex h-5 w-5 items-center justify-center text-primary">
+                      <Globe className="h-5 w-5" />
+                    </span>
+                    <span className="text-base font-medium text-zinc-900">
+                      {pickByLocale(locale, { zh: "语言", en: "Language" })}
+                    </span>
+                  </div>
+                  <SegmentedControl
+                    options={LANGUAGE_OPTIONS}
+                    value={locale}
+                    onChange={(value) => handleLanguageChange(value as Locale)}
+                    className="w-full"
+                  />
+                </div>
+              </SettingsGroup>
+
+              <SettingsGroup title={pickByLocale(locale, { zh: "身体档案", en: "Body profile" })}>
                 <SettingsRow
                   icon={<Ruler className="h-5 w-5" />}
-                  label="身高"
+                  label={pickByLocale(locale, { zh: "身高", en: "Height" })}
                   value={`${profile.height} cm`}
                   onClick={() => setNumberEditType("height")}
                   showChevron
                 />
                 <SettingsRow
                   icon={<Weight className="h-5 w-5" />}
-                  label="体重"
+                  label={pickByLocale(locale, { zh: "体重", en: "Weight" })}
                   value={`${profile.weight} kg`}
                   onClick={() => setNumberEditType("weight")}
                   showChevron
@@ -265,46 +306,58 @@ export default function SettingsPage() {
                 />
                 <SettingsRow
                   icon={<Users className="h-5 w-5" />}
-                  label="家庭人数"
-                  value={`${profile.household_size} 人`}
+                  label={pickByLocale(locale, { zh: "家庭人数", en: "Household size" })}
+                  value={pickByLocale(locale, {
+                    zh: `${profile.household_size} 人`,
+                    en: `${profile.household_size} people`,
+                  })}
                   onClick={() => setNumberEditType("household_size")}
                   showChevron
                 />
                 <SettingsRow
                   icon={<Clock3 className="h-5 w-5" />}
-                  label="工作日时间预算"
-                  value={`${profile.time_budget_minutes} 分钟`}
+                  label={pickByLocale(locale, { zh: "工作日时间预算", en: "Weekday time budget" })}
+                  value={pickByLocale(locale, {
+                    zh: `${profile.time_budget_minutes} 分钟`,
+                    en: `${profile.time_budget_minutes} min`,
+                  })}
                   onClick={() => setNumberEditType("time_budget_minutes")}
                   showChevron
                 />
                 <SettingsRow
                   icon={<Clock3 className="h-5 w-5" />}
-                  label="每周采购频率"
+                  label={pickByLocale(locale, {
+                    zh: "每周采购频率",
+                    en: "Weekly shopping frequency",
+                  })}
                   value={
                     profile.purchase_frequency_per_week >= 4
-                      ? "4+ 次/周"
-                      : `${profile.purchase_frequency_per_week} 次/周`
+                      ? pickByLocale(locale, { zh: "4+ 次/周", en: "4+ times/wk" })
+                      : pickByLocale(locale, {
+                          zh: `${profile.purchase_frequency_per_week} 次/周`,
+                          en: `${profile.purchase_frequency_per_week} times/wk`,
+                        })
                   }
                   onClick={() => setNumberEditType("purchase_frequency_per_week")}
                   showChevron
                 />
                 <SettingsRow
                   icon={<Target className="h-5 w-5" />}
-                  label="目标"
-                  value={goalLabels[profile.goal]}
+                  label={pickByLocale(locale, { zh: "目标", en: "Goal" })}
+                  value={getGoalLabel(profile.goal, locale)}
                   onClick={() => setGoalModalOpen(true)}
                   showChevron
                   isLast
                 />
               </SettingsGroup>
 
-              <SettingsGroup title="运动表现">
+              <SettingsGroup title={pickByLocale(locale, { zh: "运动表现", en: "Athletic context" })}>
                 <div className="space-y-4 bg-white px-4 py-4 lg:px-5">
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="space-y-2">
                       <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
                         <Dumbbell className="h-4 w-4 text-primary" />
-                        运动项目
+                        {pickByLocale(locale, { zh: "运动项目", en: "Sport" })}
                       </span>
                       <input
                         type="text"
@@ -312,7 +365,10 @@ export default function SettingsPage() {
                         onChange={(event) =>
                           handleAthleteDraftChange("sport_type", event.target.value)
                         }
-                        placeholder="例如：羽毛球、游泳、铁三"
+                        placeholder={pickByLocale(locale, {
+                          zh: "例如：羽毛球、游泳、铁三",
+                          en: "For example: badminton, swimming, triathlon",
+                        })}
                         className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                       />
                     </label>
@@ -320,7 +376,10 @@ export default function SettingsPage() {
                     <label className="space-y-2">
                       <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
                         <Clock3 className="h-4 w-4 text-primary" />
-                        每周训练天数
+                        {pickByLocale(locale, {
+                          zh: "每周训练天数",
+                          en: "Training days per week",
+                        })}
                       </span>
                       <input
                         type="number"
@@ -339,10 +398,10 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
                       <Gauge className="h-4 w-4 text-primary" />
-                      训练强度
+                      {pickByLocale(locale, { zh: "训练强度", en: "Training intensity" })}
                     </span>
                     <div className="flex flex-wrap gap-2">
-                      {TRAINING_INTENSITY_OPTIONS.map((option) => (
+                      {trainingIntensityOptions.map((option) => (
                         <button
                           key={option.value}
                           type="button"
@@ -362,10 +421,10 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
                       <Trophy className="h-4 w-4 text-primary" />
-                      赛事周期
+                      {pickByLocale(locale, { zh: "赛事周期", en: "Competition cycle" })}
                     </span>
                     <div className="flex flex-wrap gap-2">
-                      {COMPETITION_CYCLE_OPTIONS.map((option) => (
+                      {competitionCycleOptions.map((option) => (
                         <button
                           key={option.value}
                           type="button"
@@ -385,7 +444,7 @@ export default function SettingsPage() {
                   <label className="space-y-2">
                     <span className="flex items-center gap-2 text-sm font-medium text-zinc-700">
                       <NotebookPen className="h-4 w-4 text-primary" />
-                      训练计划备注
+                      {pickByLocale(locale, { zh: "训练计划备注", en: "Training notes" })}
                     </span>
                     <textarea
                       value={athleteDraft.training_notes}
@@ -393,7 +452,10 @@ export default function SettingsPage() {
                         handleAthleteDraftChange("training_notes", event.target.value)
                       }
                       rows={4}
-                      placeholder="例如：周二力量，周四间歇，周日长距离。"
+                      placeholder={pickByLocale(locale, {
+                        zh: "例如：周二力量，周四间歇，周日长距离。",
+                        en: "For example: strength on Tuesday, intervals on Thursday, long ride on Sunday.",
+                      })}
                       className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-900 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                     />
                   </label>
@@ -404,16 +466,25 @@ export default function SettingsPage() {
                     disabled={savingAthlete}
                     className="inline-flex rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {savingAthlete ? "保存中..." : "保存运动员信息"}
+                    {savingAthlete
+                      ? pickByLocale(locale, { zh: "保存中...", en: "Saving..." })
+                      : pickByLocale(locale, { zh: "保存运动员信息", en: "Save athlete info" })}
                   </button>
                 </div>
               </SettingsGroup>
 
-              <SettingsGroup title="Agent 调教">
+              <SettingsGroup title={pickByLocale(locale, { zh: "Agent 调教", en: "Agent tuning" })}>
                 <SettingsRow
                   icon={<Ban className="h-5 w-5" />}
-                  label="忌口管理"
-                  value={preferences.dislikes.length > 0 ? `${preferences.dislikes.length} 项` : "无"}
+                  label={pickByLocale(locale, { zh: "忌口管理", en: "Dislikes" })}
+                  value={
+                    preferences.dislikes.length > 0
+                      ? pickByLocale(locale, {
+                          zh: `${preferences.dislikes.length} 项`,
+                          en: `${preferences.dislikes.length} items`,
+                        })
+                      : pickByLocale(locale, { zh: "无", en: "None" })
+                  }
                   onClick={() => setDislikesModalOpen(true)}
                   showChevron
                 />
@@ -422,10 +493,12 @@ export default function SettingsPage() {
                     <span className="flex h-5 w-5 items-center justify-center text-primary">
                       <ChefHat className="h-5 w-5" />
                     </span>
-                    <span className="text-base font-medium text-zinc-900">厨艺水平</span>
+                    <span className="text-base font-medium text-zinc-900">
+                      {pickByLocale(locale, { zh: "厨艺水平", en: "Cooking level" })}
+                    </span>
                   </div>
                   <SegmentedControl
-                    options={COOKING_LEVEL_OPTIONS}
+                    options={cookingLevelOptions}
                     value={preferences.level}
                     onChange={(value) => syncPreference("cooking_level", value)}
                     className="w-full"
@@ -436,10 +509,12 @@ export default function SettingsPage() {
                     <span className="flex h-5 w-5 items-center justify-center text-primary">
                       <UtensilsCrossed className="h-5 w-5" />
                     </span>
-                    <span className="text-base font-medium text-zinc-900">口味偏好</span>
+                    <span className="text-base font-medium text-zinc-900">
+                      {pickByLocale(locale, { zh: "口味偏好", en: "Flavor preferences" })}
+                    </span>
                   </div>
                   <ChipSelect
-                    options={FLAVOR_OPTIONS}
+                    options={flavorOptions}
                     selected={preferences.flavors}
                     onChange={(values) => syncPreference("flavor_tags", values)}
                   />
@@ -449,10 +524,12 @@ export default function SettingsPage() {
                     <span className="flex h-5 w-5 items-center justify-center text-primary">
                       <Globe className="h-5 w-5" />
                     </span>
-                    <span className="text-base font-medium text-zinc-900">偏好菜系</span>
+                    <span className="text-base font-medium text-zinc-900">
+                      {pickByLocale(locale, { zh: "偏好菜系", en: "Cuisine preferences" })}
+                    </span>
                   </div>
                   <ChipSelect
-                    options={CUISINE_OPTIONS}
+                    options={cuisineOptions}
                     selected={preferences.cuisines}
                     onChange={(values) => syncPreference("cuisine_tags", values)}
                   />
@@ -462,10 +539,12 @@ export default function SettingsPage() {
                     <span className="flex h-5 w-5 items-center justify-center text-primary">
                       <Flame className="h-5 w-5" />
                     </span>
-                    <span className="text-base font-medium text-zinc-900">偏好做法</span>
+                    <span className="text-base font-medium text-zinc-900">
+                      {pickByLocale(locale, { zh: "偏好做法", en: "Preferred cooking methods" })}
+                    </span>
                   </div>
                   <ChipSelect
-                    options={METHOD_OPTIONS}
+                    options={methodOptions}
                     selected={preferences.methods}
                     onChange={(values) => syncPreference("method_tags", values)}
                   />
@@ -475,22 +554,17 @@ export default function SettingsPage() {
                     <span className="flex h-5 w-5 items-center justify-center text-primary">
                       <HeartPulse className="h-5 w-5" />
                     </span>
-                    <span className="text-base font-medium text-zinc-900">特殊人群约束</span>
+                    <span className="text-base font-medium text-zinc-900">
+                      {pickByLocale(locale, {
+                        zh: "特殊人群约束",
+                        en: "Health constraints",
+                      })}
+                    </span>
                   </div>
                   <ChipSelect
-                    options={HEALTH_CONSTRAINT_OPTIONS.map((key) => healthConstraintLabels[key])}
-                    selected={preferences.health_constraints.map(
-                      (constraint) =>
-                        healthConstraintLabels[
-                          constraint as keyof typeof healthConstraintLabels
-                        ] || constraint
-                    )}
-                    onChange={(values) => {
-                      const keys = HEALTH_CONSTRAINT_OPTIONS.filter((key) =>
-                        values.includes(healthConstraintLabels[key])
-                      );
-                      syncPreference("health_constraints", [...keys]);
-                    }}
+                    options={healthConstraintOptions}
+                    selected={preferences.health_constraints}
+                    onChange={(values) => syncPreference("health_constraints", [...values])}
                   />
                 </div>
                 <div className="bg-white px-4 py-3 lg:px-5">
@@ -498,10 +572,12 @@ export default function SettingsPage() {
                     <span className="flex h-5 w-5 items-center justify-center text-primary">
                       <Wrench className="h-5 w-5" />
                     </span>
-                    <span className="text-base font-medium text-zinc-900">厨房设备</span>
+                    <span className="text-base font-medium text-zinc-900">
+                      {pickByLocale(locale, { zh: "厨房设备", en: "Kitchen tools" })}
+                    </span>
                   </div>
                   <ChipSelect
-                    options={KITCHEN_TOOL_OPTIONS}
+                    options={kitchenToolOptions}
                     selected={preferences.kitchen_tools}
                     onChange={(values) => syncPreference("kitchen_tools", values)}
                   />
@@ -510,10 +586,10 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-6 xl:pt-7">
-              <SettingsGroup title="开发者选项">
+              <SettingsGroup title={pickByLocale(locale, { zh: "开发者选项", en: "Developer options" })}>
                 <SettingsRow
                   icon={<Bug className="h-5 w-5" />}
-                  label="调试模式"
+                  label={pickByLocale(locale, { zh: "调试模式", en: "Debug mode" })}
                   action={<Switch checked={system.debugMode} onChange={handleDebugToggle} />}
                   isLast
                 />
@@ -523,7 +599,10 @@ export default function SettingsPage() {
                 <p className="text-xs uppercase tracking-[0.28em] text-zinc-400/80">LightTable</p>
                 <p className="mt-3 text-sm font-medium text-zinc-600">MVP Demo</p>
                 <p className="mt-2 text-sm leading-6 text-zinc-500">
-                  推荐会综合库存、特殊约束和简单偏好信号，不提供医疗建议。
+                  {pickByLocale(locale, {
+                    zh: "推荐会综合库存、特殊约束和简单偏好信号，不提供医疗建议。",
+                    en: "Recommendations combine inventory, constraints, and lightweight preference signals. They do not provide medical advice.",
+                  })}
                 </p>
               </section>
             </div>
@@ -531,9 +610,13 @@ export default function SettingsPage() {
         </div>
       </main>
 
-      <Modal isOpen={goalModalOpen} onClose={() => setGoalModalOpen(false)} title="选择目标">
+      <Modal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        title={pickByLocale(locale, { zh: "选择目标", en: "Choose goal" })}
+      >
         <div className="space-y-3">
-          {GOAL_OPTIONS.map((option) => {
+          {goalOptions.map((option) => {
             const isSelected = profile.goal === option.value;
             return (
               <button
@@ -557,7 +640,11 @@ export default function SettingsPage() {
         </div>
       </Modal>
 
-      <Modal isOpen={dislikesModalOpen} onClose={() => setDislikesModalOpen(false)} title="忌口管理">
+      <Modal
+        isOpen={dislikesModalOpen}
+        onClose={() => setDislikesModalOpen(false)}
+        title={pickByLocale(locale, { zh: "忌口管理", en: "Dislikes" })}
+      >
         <DislikesEditor
           dislikes={preferences.dislikes}
           onAdd={(item) => syncPreference("dislikes", item, "add")}

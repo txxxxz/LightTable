@@ -17,6 +17,7 @@ import {
   updateShoppingListItem,
 } from "@/lib/api";
 import { groupByInventoryCategory } from "@/lib/inventory-categories";
+import { pickByLocale, useLocale } from "@/lib/i18n";
 import type { InventoryItem, ShoppingListItem } from "@/lib/types";
 import { getUserId } from "@/lib/user";
 
@@ -69,6 +70,7 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 }
 
 function ShoppingPageContent() {
+  const locale = useLocale();
   const userId = getUserId();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -103,10 +105,15 @@ function ShoppingPageContent() {
       .then(() => setError(null))
       .catch((cause) => {
         console.error(cause);
-        setError("补货页加载失败，请确认后端服务已启动。");
+        setError(
+          pickByLocale(locale, {
+            zh: "补货页加载失败，请确认后端服务已启动。",
+            en: "Failed to load the restock page. Please make sure the backend is running.",
+          })
+        );
       })
       .finally(() => setLoading(false));
-  }, [userId]);
+  }, [locale, userId]);
 
   useEffect(() => {
     const browserWindow = window as Window & {
@@ -141,8 +148,14 @@ function ShoppingPageContent() {
       setListening(false);
       setSpeechError(
         event.error === "not-allowed"
-          ? "请先允许麦克风权限。"
-          : `语音输入失败：${event.error}`
+          ? pickByLocale(locale, {
+              zh: "请先允许麦克风权限。",
+              en: "Please allow microphone access first.",
+            })
+          : pickByLocale(locale, {
+              zh: `语音输入失败：${event.error}`,
+              en: `Voice input failed: ${event.error}`,
+            })
       );
     };
     recognition.onend = () => setListening(false);
@@ -154,15 +167,15 @@ function ShoppingPageContent() {
       recognition.stop();
       recognitionRef.current = null;
     };
-  }, []);
+  }, [locale]);
 
   const groupedInventory = useMemo(
-    () => groupByInventoryCategory(inventoryItems),
-    [inventoryItems]
+    () => groupByInventoryCategory(inventoryItems, locale),
+    [inventoryItems, locale]
   );
   const groupedSuggestions = useMemo(
-    () => groupByInventoryCategory(shoppingItems),
-    [shoppingItems]
+    () => groupByInventoryCategory(shoppingItems, locale),
+    [locale, shoppingItems]
   );
   const selectedSuggestionIds = useMemo(
     () => shoppingItems.filter((item) => item.checked).map((item) => item.id),
@@ -178,7 +191,12 @@ function ShoppingPageContent() {
   const handleVoiceToggle = () => {
     const recognition = recognitionRef.current;
     if (!recognition) {
-      setSpeechError("当前浏览器不支持语音输入。");
+      setSpeechError(
+        pickByLocale(locale, {
+          zh: "当前浏览器不支持语音输入。",
+          en: "Voice input is not supported in this browser.",
+        })
+      );
       return;
     }
     if (listening) {
@@ -193,7 +211,12 @@ function ShoppingPageContent() {
     } catch (cause) {
       console.error(cause);
       setListening(false);
-      setSpeechError("语音输入启动失败，请稍后重试。");
+      setSpeechError(
+        pickByLocale(locale, {
+          zh: "语音输入启动失败，请稍后重试。",
+          en: "Failed to start voice input. Please try again.",
+        })
+      );
     }
   };
 
@@ -213,7 +236,12 @@ function ShoppingPageContent() {
     setInventoryItems(saved);
     setInputText("");
     setError(null);
-    setSuccessMessage(`已加入库存 ${nextItems.length} 项。`);
+    setSuccessMessage(
+      pickByLocale(locale, {
+        zh: `已加入库存 ${nextItems.length} 项。`,
+        en: `Added ${nextItems.length} items to inventory.`,
+      })
+    );
   };
 
   const handleToggleSuggestion = async (item: ShoppingListItem) => {
@@ -224,7 +252,12 @@ function ShoppingPageContent() {
       setSuccessMessage(null);
     } catch (cause) {
       console.error(cause);
-      setError("补货清单更新失败，请稍后重试。");
+      setError(
+        pickByLocale(locale, {
+          zh: "补货清单更新失败，请稍后重试。",
+          en: "Failed to update the shopping list. Please try again.",
+        })
+      );
     }
   };
 
@@ -236,11 +269,21 @@ function ShoppingPageContent() {
       setInventoryItems(result.inventoryItems);
       setShoppingItems(result.shoppingItems);
       setError(null);
-      setSuccessMessage(`已将 ${result.movedCount} 项补货加入库存。`);
+      setSuccessMessage(
+        pickByLocale(locale, {
+          zh: `已将 ${result.movedCount} 项补货加入库存。`,
+          en: `Added ${result.movedCount} shopping items to inventory.`,
+        })
+      );
       setTab("inventory");
     } catch (cause) {
       console.error(cause);
-      setError("加入库存失败，请稍后重试。");
+      setError(
+        pickByLocale(locale, {
+          zh: "加入库存失败，请稍后重试。",
+          en: "Failed to add items to inventory. Please try again.",
+        })
+      );
     } finally {
       setMovingToInventory(false);
     }
@@ -250,7 +293,9 @@ function ShoppingPageContent() {
     <>
       <header className="sticky top-0 left-0 right-0 z-40 border-b border-border bg-surface/95 pt-safe backdrop-blur">
         <div className="flex h-14 items-center px-4 lg:px-6">
-          <h1 className="text-lg font-semibold text-text-main">补货</h1>
+          <h1 className="text-lg font-semibold text-text-main">
+            {pickByLocale(locale, { zh: "补货", en: "Restock" })}
+          </h1>
         </div>
       </header>
 
@@ -259,8 +304,14 @@ function ShoppingPageContent() {
           <section className="rounded-[24px] border border-border bg-surface p-4 shadow-sm">
             <SegmentedControl
               options={[
-                { value: "inventory", label: "分类库存展示" },
-                { value: "suggestions", label: "建议补货清单" },
+                {
+                  value: "inventory",
+                  label: pickByLocale(locale, { zh: "分类库存展示", en: "Inventory view" }),
+                },
+                {
+                  value: "suggestions",
+                  label: pickByLocale(locale, { zh: "建议补货清单", en: "Suggested shopping list" }),
+                },
               ]}
               value={activeTab}
               onChange={(value) => setTab(value as ActiveTab)}
@@ -284,9 +335,17 @@ function ShoppingPageContent() {
               <div className="rounded-[24px] border border-border bg-surface p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-text-muted">拍照录入 + 自然语言 + 语音</p>
+                    <p className="text-sm font-medium text-text-muted">
+                      {pickByLocale(locale, {
+                        zh: "拍照录入 + 自然语言 + 语音",
+                        en: "Photo capture + natural language + voice",
+                      })}
+                    </p>
                     <p className="mt-1 text-sm text-text-muted">
-                      这里直接维护真实库存，确认后会立即进入分类库存。
+                      {pickByLocale(locale, {
+                        zh: "这里直接维护真实库存，确认后会立即进入分类库存。",
+                        en: "Manage your real inventory here. Confirmed items go straight into categorized inventory.",
+                      })}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -298,7 +357,9 @@ function ShoppingPageContent() {
                       className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium text-text-main disabled:opacity-50"
                     >
                       {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                      {listening ? "停止语音输入" : "语音输入"}
+                      {listening
+                        ? pickByLocale(locale, { zh: "停止语音输入", en: "Stop voice input" })
+                        : pickByLocale(locale, { zh: "语音输入", en: "Voice input" })}
                     </button>
                   </div>
                 </div>
@@ -306,7 +367,10 @@ function ShoppingPageContent() {
                 <textarea
                   value={inputText}
                   onChange={(event) => setInputText(event.target.value)}
-                  placeholder="例如：买12个鸡蛋、一盒酸奶、一个卷心菜、家里没有蚝油还要一颗生菜"
+                  placeholder={pickByLocale(locale, {
+                    zh: "例如：买12个鸡蛋、一盒酸奶、一个卷心菜、家里没有蚝油还要一颗生菜",
+                    en: "For example: 12 eggs, one yogurt, one cabbage, and we also need oyster sauce and lettuce.",
+                  })}
                   className="mt-4 min-h-28 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-text-main outline-none"
                 />
                 <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -318,21 +382,40 @@ function ShoppingPageContent() {
                     disabled={!inputText.trim()}
                     className="rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
                   >
-                    解析并加入库存
+                    {pickByLocale(locale, { zh: "解析并加入库存", en: "Parse and add to inventory" })}
                   </button>
                 </div>
                 <div className="mt-3 space-y-1 text-sm text-text-muted">
-                  <p>库存和补货统一使用 10 个固定分类，不再用自由标签。</p>
-                  {!speechSupported && <p>当前浏览器不支持语音输入。</p>}
+                  <p>
+                    {pickByLocale(locale, {
+                      zh: "库存和补货统一使用 10 个固定分类，不再用自由标签。",
+                      en: "Inventory and shopping both use the same 10 fixed categories instead of free-form tags.",
+                    })}
+                  </p>
+                  {!speechSupported && (
+                    <p>
+                      {pickByLocale(locale, {
+                        zh: "当前浏览器不支持语音输入。",
+                        en: "Voice input is not supported in this browser.",
+                      })}
+                    </p>
+                  )}
                   {speechError && <p className="text-alert">{speechError}</p>}
                 </div>
               </div>
 
               <div className="rounded-[24px] border border-border bg-surface p-5 shadow-sm">
                 {loading ? (
-                  <p className="py-10 text-center text-sm text-text-muted">加载中...</p>
+                  <p className="py-10 text-center text-sm text-text-muted">
+                    {pickByLocale(locale, { zh: "加载中...", en: "Loading..." })}
+                  </p>
                 ) : groupedInventory.length === 0 ? (
-                  <p className="py-10 text-center text-sm text-text-muted">当前还没有库存，先拍照或输入一段采购文本。</p>
+                  <p className="py-10 text-center text-sm text-text-muted">
+                    {pickByLocale(locale, {
+                      zh: "当前还没有库存，先拍照或输入一段采购文本。",
+                      en: "There is no inventory yet. Start with a photo or a shopping note.",
+                    })}
+                  </p>
                 ) : (
                   <div className="space-y-5">
                     {groupedInventory.map((group) => (
@@ -353,9 +436,14 @@ function ShoppingPageContent() {
             <section className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-border bg-surface p-5 shadow-sm">
                 <div>
-                  <p className="text-sm font-medium text-text-main">建议补货清单</p>
+                  <p className="text-sm font-medium text-text-main">
+                    {pickByLocale(locale, { zh: "建议补货清单", en: "Suggested shopping list" })}
+                  </p>
                   <p className="mt-1 text-sm text-text-muted">
-                    先勾选这次实际买到的物品，再一键加入库存。
+                    {pickByLocale(locale, {
+                      zh: "先勾选这次实际买到的物品，再一键加入库存。",
+                      en: "Check what you actually bought this time, then add everything to inventory in one tap.",
+                    })}
                   </p>
                 </div>
                 <Button
@@ -363,16 +451,26 @@ function ShoppingPageContent() {
                   disabled={selectedSuggestionIds.length === 0 || movingToInventory}
                 >
                   {movingToInventory
-                    ? "加入库存中..."
-                    : `一键加入库存${selectedSuggestionIds.length > 0 ? `（${selectedSuggestionIds.length}）` : ""}`}
+                    ? pickByLocale(locale, { zh: "加入库存中...", en: "Adding to inventory..." })
+                    : pickByLocale(locale, {
+                        zh: `一键加入库存${selectedSuggestionIds.length > 0 ? `（${selectedSuggestionIds.length}）` : ""}`,
+                        en: `Add to inventory${selectedSuggestionIds.length > 0 ? ` (${selectedSuggestionIds.length})` : ""}`,
+                      })}
                 </Button>
               </div>
 
               <section className="rounded-[24px] border border-border bg-surface p-5 shadow-sm">
               {loading ? (
-                <p className="py-10 text-center text-sm text-text-muted">加载中...</p>
+                <p className="py-10 text-center text-sm text-text-muted">
+                  {pickByLocale(locale, { zh: "加载中...", en: "Loading..." })}
+                </p>
               ) : groupedSuggestions.length === 0 ? (
-                <p className="py-10 text-center text-sm text-text-muted">当前没有建议补货项。</p>
+                <p className="py-10 text-center text-sm text-text-muted">
+                  {pickByLocale(locale, {
+                    zh: "当前没有建议补货项。",
+                    en: "There are no suggested shopping items right now.",
+                  })}
+                </p>
               ) : (
                 <div className="space-y-5">
                   {groupedSuggestions.map((group) => (
@@ -396,12 +494,13 @@ function ShoppingPageContent() {
                                   <p className="font-medium text-text-main">{item.displayName}</p>
                                   {item.recommendedQuantityText ? (
                                     <span className="rounded-full bg-surface px-2 py-1 text-xs text-text-muted">
-                                      建议补 {item.recommendedQuantityText}
+                                      {pickByLocale(locale, { zh: "建议补", en: "Suggested" })}{" "}
+                                      {item.recommendedQuantityText}
                                     </span>
                                   ) : null}
                                   {item.quantityText ? (
                                     <span className="rounded-full bg-surface px-2 py-1 text-xs text-text-muted">
-                                      已记 {item.quantityText}
+                                      {pickByLocale(locale, { zh: "已记", en: "Recorded" })} {item.quantityText}
                                     </span>
                                   ) : null}
                                 </div>
@@ -425,7 +524,7 @@ function ShoppingPageContent() {
         <AddItemSheet
           rawText={pendingSheet.rawText}
           sourceType="manual_text"
-          confirmLabel="加入分类库存"
+          confirmLabel={pickByLocale(locale, { zh: "加入分类库存", en: "Add to inventory" })}
           onConfirm={handleConfirmInventory}
           onClose={() => setPendingSheet(null)}
         />
@@ -435,7 +534,7 @@ function ShoppingPageContent() {
         <AddItemSheet
           file={pendingSheet.file}
           sourceType={pendingSheet.sourceType}
-          confirmLabel="加入分类库存"
+          confirmLabel={pickByLocale(locale, { zh: "加入分类库存", en: "Add to inventory" })}
           onConfirm={handleConfirmInventory}
           onClose={() => setPendingSheet(null)}
         />
@@ -445,17 +544,20 @@ function ShoppingPageContent() {
 }
 
 function ShoppingPageFallback() {
+  const locale = useLocale();
   return (
     <>
       <header className="sticky top-0 left-0 right-0 z-40 border-b border-border bg-surface/95 pt-safe backdrop-blur">
         <div className="flex h-14 items-center px-4 lg:px-6">
-          <h1 className="text-lg font-semibold text-text-main">补货</h1>
+          <h1 className="text-lg font-semibold text-text-main">
+            {pickByLocale(locale, { zh: "补货", en: "Restock" })}
+          </h1>
         </div>
       </header>
 
       <main className="px-4 py-4 lg:px-6 lg:py-8">
         <div className="mx-auto max-w-6xl rounded-[24px] border border-border bg-surface p-5 text-sm text-text-muted shadow-sm">
-          加载中...
+          {pickByLocale(locale, { zh: "加载中...", en: "Loading..." })}
         </div>
       </main>
     </>

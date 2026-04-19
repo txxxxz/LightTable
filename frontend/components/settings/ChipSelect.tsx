@@ -2,8 +2,10 @@
 
 import { cn } from "@/lib/cn";
 
+type ChipOption = string | { value: string; label: string };
+
 interface ChipSelectProps {
-  options: readonly string[];
+  options: readonly ChipOption[];
   selected?: string[];
   onChange: (selected: string[]) => void;
   className?: string;
@@ -14,6 +16,9 @@ interface ChipSelectProps {
  */
 export function ChipSelect({ options, selected, onChange, className }: ChipSelectProps) {
   const safeSelected = Array.isArray(selected) ? selected : [];
+  const normalizedOptions = options.map((option) =>
+    typeof option === "string" ? { value: option, label: option } : option
+  );
 
   const toggle = (opt: string) => {
     if (safeSelected.includes(opt)) {
@@ -25,13 +30,13 @@ export function ChipSelect({ options, selected, onChange, className }: ChipSelec
 
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
-      {options.map((opt) => {
-        const isSelected = safeSelected.includes(opt);
+      {normalizedOptions.map((opt) => {
+        const isSelected = safeSelected.includes(opt.value);
         return (
           <button
-            key={opt}
+            key={opt.value}
             type="button"
-            onClick={() => toggle(opt)}
+            onClick={() => toggle(opt.value)}
             className={cn(
               "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
               isSelected
@@ -39,7 +44,7 @@ export function ChipSelect({ options, selected, onChange, className }: ChipSelec
                 : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
             )}
           >
-            {opt}
+            {opt.label}
           </button>
         );
       })}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
+import { pickByLocale, useLocale } from "@/lib/i18n";
 
 export type NumberEditType =
   | "height"
@@ -11,16 +12,36 @@ export type NumberEditType =
   | "time_budget_minutes"
   | "purchase_frequency_per_week";
 
-const CONFIG: Record<
-  NumberEditType,
-  { min: number; max: number; step: number; unit: string; label: string }
-> = {
-  height: { min: 100, max: 250, step: 1, unit: "cm", label: "身高" },
-  weight: { min: 30, max: 200, step: 0.5, unit: "kg", label: "体重" },
-  household_size: { min: 1, max: 8, step: 1, unit: "人", label: "家庭人数" },
-  time_budget_minutes: { min: 10, max: 90, step: 5, unit: "分钟", label: "工作日时间预算" },
-  purchase_frequency_per_week: { min: 1, max: 4, step: 1, unit: "次/周", label: "每周采购频率" },
-};
+function getConfig(locale: ReturnType<typeof useLocale>) {
+  return {
+    height: { min: 100, max: 250, step: 1, unit: "cm", label: pickByLocale(locale, { zh: "身高", en: "Height" }) },
+    weight: { min: 30, max: 200, step: 0.5, unit: "kg", label: pickByLocale(locale, { zh: "体重", en: "Weight" }) },
+    household_size: {
+      min: 1,
+      max: 8,
+      step: 1,
+      unit: pickByLocale(locale, { zh: "人", en: "people" }),
+      label: pickByLocale(locale, { zh: "家庭人数", en: "Household size" }),
+    },
+    time_budget_minutes: {
+      min: 10,
+      max: 90,
+      step: 5,
+      unit: pickByLocale(locale, { zh: "分钟", en: "min" }),
+      label: pickByLocale(locale, { zh: "工作日时间预算", en: "Weekday time budget" }),
+    },
+    purchase_frequency_per_week: {
+      min: 1,
+      max: 4,
+      step: 1,
+      unit: pickByLocale(locale, { zh: "次/周", en: "times/wk" }),
+      label: pickByLocale(locale, { zh: "每周采购频率", en: "Weekly shopping frequency" }),
+    },
+  } satisfies Record<
+    NumberEditType,
+    { min: number; max: number; step: number; unit: string; label: string }
+  >;
+}
 
 function formatOptionValue(type: NumberEditType, value: number, unit: string) {
   if (type === "purchase_frequency_per_week" && value >= 4) {
@@ -56,7 +77,8 @@ export function NumberEditSheet({
   isOpen,
   onClose,
 }: NumberEditSheetProps) {
-  const config = CONFIG[type];
+  const locale = useLocale();
+  const config = getConfig(locale)[type];
   const options = generateOptions(config.min, config.max, config.step);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,13 +163,15 @@ export function NumberEditSheet({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`编辑${config.label}`}
+      title={pickByLocale(locale, {
+        zh: `编辑${config.label}`,
+        en: `Edit ${config.label}`,
+      })}
     >
       <div className="space-y-6">
-        {/* 数字输入框 */}
         <div>
           <label className="block text-sm font-medium text-zinc-500 mb-2">
-            直接输入
+            {pickByLocale(locale, { zh: "直接输入", en: "Enter directly" })}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -168,7 +192,6 @@ export function NumberEditSheet({
         </div>
 
         <div className="relative">
-            {/* 选中高亮条 */}
             <div
               className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-11 rounded-lg bg-primary/10 border border-primary/30 pointer-events-none z-10"
               style={{ marginTop: -ROW_HEIGHT / 2 }}
@@ -182,7 +205,6 @@ export function NumberEditSheet({
                 scrollSnapType: "y mandatory",
               }}
             >
-              {/* 顶部占位 */}
               <div style={{ height: (VISIBLE_ROWS - 1) / 2 * ROW_HEIGHT }} />
               {options.map((opt) => (
                 <div
@@ -196,7 +218,6 @@ export function NumberEditSheet({
                   {formatOptionValue(type, opt, config.unit)}
                 </div>
               ))}
-              {/* 底部占位 */}
               <div style={{ height: (VISIBLE_ROWS - 1) / 2 * ROW_HEIGHT }} />
             </div>
           </div>
@@ -209,7 +230,7 @@ export function NumberEditSheet({
             "hover:bg-primary-hover active:opacity-90 transition-colors"
           )}
         >
-          确定
+          {pickByLocale(locale, { zh: "确定", en: "Confirm" })}
         </button>
       </div>
     </Modal>

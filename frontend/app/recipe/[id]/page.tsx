@@ -6,11 +6,13 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { completeRecipe, getRecipe, getRecipeVideoReference, sendFeedback } from "@/lib/api";
+import { pickByLocale, useLocale } from "@/lib/i18n";
 import { useGlobalStore } from "@/lib/store";
 import type { Recipe, VideoReference } from "@/lib/types";
 import { getUserId } from "@/lib/user";
 
 export default function RecipeDetailPage() {
+  const locale = useLocale();
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
@@ -54,7 +56,14 @@ export default function RecipeDetailPage() {
         }).catch(() => undefined);
       } catch (cause) {
         console.error(cause);
-        if (!cancelled) setError("未找到该食谱");
+        if (!cancelled) {
+          setError(
+            pickByLocale(locale, {
+              zh: "未找到该食谱",
+              en: "Recipe not found",
+            })
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -64,7 +73,7 @@ export default function RecipeDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, userId]);
+  }, [id, locale, userId]);
 
   const handleStartCooking = async () => {
     if (!recipe) return;
@@ -92,7 +101,9 @@ export default function RecipeDetailPage() {
   if (loading) {
     return (
       <main className="px-4 py-8 lg:px-6">
-        <p className="text-text-muted">加载中...</p>
+        <p className="text-text-muted">
+          {pickByLocale(locale, { zh: "加载中...", en: "Loading..." })}
+        </p>
       </main>
     );
   }
@@ -100,9 +111,11 @@ export default function RecipeDetailPage() {
   if (error || !recipe) {
     return (
       <main className="px-4 py-8 lg:px-6">
-        <p className="text-text-muted">{error || "未找到该食谱"}</p>
+        <p className="text-text-muted">
+          {error || pickByLocale(locale, { zh: "未找到该食谱", en: "Recipe not found" })}
+        </p>
         <Link href="/decide" className="mt-4 inline-block text-primary underline">
-          返回决策
+          {pickByLocale(locale, { zh: "返回决策", en: "Back to decide" })}
         </Link>
       </main>
     );
@@ -118,7 +131,7 @@ export default function RecipeDetailPage() {
             className="h-auto shrink-0 px-0 text-sm no-underline"
             onClick={() => router.push(returnToResultsHref)}
           >
-            返回方案选择
+            {pickByLocale(locale, { zh: "返回方案选择", en: "Back to plans" })}
           </Button>
         </div>
       </header>
@@ -130,27 +143,37 @@ export default function RecipeDetailPage() {
               <div className="flex flex-wrap items-center gap-3">
                 {recipe.timeMinutes != null && (
                   <span className="rounded-tag bg-background px-3 py-1 text-sm text-text-muted">
-                    约 {recipe.timeMinutes} 分钟
+                    {pickByLocale(locale, {
+                      zh: `约 ${recipe.timeMinutes} 分钟`,
+                      en: `About ${recipe.timeMinutes} min`,
+                    })}
                   </span>
                 )}
                 <span className="rounded-tag bg-background px-3 py-1 text-sm text-text-muted">
-                  难度 {recipe.difficulty}
+                  {pickByLocale(locale, { zh: "难度", en: "Difficulty" })} {recipe.difficulty}
                 </span>
               </div>
 
               <hr className="my-4 border-border" />
               <section>
-                <h2 className="mb-2 font-medium text-text-main">命中库存</h2>
+                <h2 className="mb-2 font-medium text-text-main">
+                  {pickByLocale(locale, { zh: "命中库存", en: "In stock" })}
+                </h2>
                 <p className="text-sm text-text-muted">
                   {recipe.matchedInventory.length > 0
                     ? recipe.matchedInventory.join("、")
-                    : "这道菜更适合补货后再做"}
+                    : pickByLocale(locale, {
+                        zh: "这道菜更适合补货后再做",
+                        en: "This recipe is better after a restock.",
+                      })}
                 </p>
               </section>
 
               <hr className="my-4 border-border" />
               <section>
-                <h2 className="mb-2 font-medium text-text-main">食材准备</h2>
+                <h2 className="mb-2 font-medium text-text-main">
+                  {pickByLocale(locale, { zh: "食材准备", en: "Ingredients" })}
+                </h2>
                 <ul className="space-y-1 text-sm text-text-muted">
                   {recipe.ingredients.map((ingredient) => (
                     <li key={ingredient}>{ingredient}</li>
@@ -158,14 +181,17 @@ export default function RecipeDetailPage() {
                 </ul>
                 {recipe.missingIngredients.length > 0 && (
                   <p className="mt-3 text-sm text-alert">
-                    还缺：{recipe.missingIngredients.join("、")}
+                    {pickByLocale(locale, { zh: "还缺", en: "Still need" })}:{" "}
+                    {recipe.missingIngredients.join("、")}
                   </p>
                 )}
               </section>
 
               <hr className="my-4 border-border" />
               <section>
-                <h2 className="mb-2 font-medium text-text-main">步骤</h2>
+                <h2 className="mb-2 font-medium text-text-main">
+                  {pickByLocale(locale, { zh: "步骤", en: "Steps" })}
+                </h2>
                 <ol className="space-y-4 leading-loose text-text-main">
                   {recipe.steps.map((step, index) => (
                     <li key={step} className="flex gap-3">
@@ -181,7 +207,9 @@ export default function RecipeDetailPage() {
 
             {videoReference && (
               <section className="rounded-[24px] border border-border bg-surface p-5 shadow-sm">
-                <p className="text-sm font-medium text-text-main">视频参考</p>
+                <p className="text-sm font-medium text-text-main">
+                  {pickByLocale(locale, { zh: "视频参考", en: "Video reference" })}
+                </p>
                 <p className="mt-2 text-sm text-text-muted">{videoReference.title}</p>
                 <a
                   href={videoReference.url}
@@ -189,7 +217,7 @@ export default function RecipeDetailPage() {
                   rel="noreferrer"
                   className="mt-3 inline-flex rounded-xl border border-primary px-4 py-2 text-sm font-medium text-primary"
                 >
-                  打开视频/搜索链接
+                  {pickByLocale(locale, { zh: "打开视频/搜索链接", en: "Open video/search link" })}
                 </a>
               </section>
             )}
@@ -197,7 +225,9 @@ export default function RecipeDetailPage() {
 
           <aside className="space-y-4">
             <div className="sticky top-24 rounded-[24px] border border-border bg-surface p-5 shadow-sm">
-              <p className="text-sm text-text-muted">执行这道菜</p>
+              <p className="text-sm text-text-muted">
+                {pickByLocale(locale, { zh: "执行这道菜", en: "Cook this recipe" })}
+              </p>
               <h2 className="mt-3 text-xl font-semibold text-text-main">{recipe.name}</h2>
 
               {!isStarted ? (
@@ -207,20 +237,31 @@ export default function RecipeDetailPage() {
                     className="w-full no-underline"
                     onClick={() => router.push(returnToResultsHref)}
                   >
-                    换一个
+                    {pickByLocale(locale, { zh: "换一个", en: "Try another" })}
                   </Button>
                   <Button className="w-full" onClick={handleStartCooking}>
-                    开做
+                    {pickByLocale(locale, { zh: "开做", en: "Start cooking" })}
                   </Button>
                 </div>
               ) : (
                 <div className="mt-6 space-y-3">
-                  <p className="text-sm text-text-muted">本次用了多少食材？</p>
+                  <p className="text-sm text-text-muted">
+                    {pickByLocale(locale, { zh: "本次用了多少食材？", en: "How much did you use?" })}
+                  </p>
                   <div className="grid gap-2">
                     {[
-                      { value: "all", label: "全部用完" },
-                      { value: "half", label: "只用一半" },
-                      { value: "custom", label: "自定义备注" },
+                      {
+                        value: "all",
+                        label: pickByLocale(locale, { zh: "全部用完", en: "Used it all" }),
+                      },
+                      {
+                        value: "half",
+                        label: pickByLocale(locale, { zh: "只用一半", en: "Used half" }),
+                      },
+                      {
+                        value: "custom",
+                        label: pickByLocale(locale, { zh: "自定义备注", en: "Custom note" }),
+                      },
                     ].map((option) => (
                       <button
                         key={option.value}
@@ -240,7 +281,10 @@ export default function RecipeDetailPage() {
                     <textarea
                       value={customNote}
                       onChange={(event) => setCustomNote(event.target.value)}
-                      placeholder="例如：鸡蛋只用了 1 个，豆腐还剩半盒"
+                      placeholder={pickByLocale(locale, {
+                        zh: "例如：鸡蛋只用了 1 个，豆腐还剩半盒",
+                        en: "For example: only used 1 egg, and half the tofu is left.",
+                      })}
                       className="min-h-24 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-text-main outline-none"
                     />
                   )}
@@ -250,14 +294,14 @@ export default function RecipeDetailPage() {
                     disabled={completeState === "submitting" || (usageMode === "custom" && !customNote.trim())}
                   >
                     {completeState === "submitting"
-                      ? "更新库存中..."
+                      ? pickByLocale(locale, { zh: "更新库存中...", en: "Updating inventory..." })
                       : completeState === "done"
-                      ? "已完成，返回库存"
-                      : "我做完了"}
+                      ? pickByLocale(locale, { zh: "已完成，返回库存", en: "Done, back to inventory" })
+                      : pickByLocale(locale, { zh: "我做完了", en: "I'm done" })}
                   </Button>
                   {completeState === "done" && (
                     <Button variant="secondary" className="w-full" onClick={() => router.push("/inventory")}>
-                      返回库存
+                      {pickByLocale(locale, { zh: "返回库存", en: "Back to inventory" })}
                     </Button>
                   )}
                 </div>

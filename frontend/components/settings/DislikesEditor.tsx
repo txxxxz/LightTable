@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { pickByLocale, useLocale } from "@/lib/i18n";
 
 export function DislikesEditor({
   dislikes,
@@ -15,6 +16,7 @@ export function DislikesEditor({
   onRemove: (item: string) => void;
 }) {
   const [input, setInput] = useState("");
+  const locale = useLocale();
 
   const handleAdd = () => {
     const trimmed = input.trim();
@@ -37,7 +39,10 @@ export function DislikesEditor({
               handleAdd();
             }
           }}
-          placeholder="输入食材名称..."
+          placeholder={pickByLocale(locale, {
+            zh: "输入食材名称...",
+            en: "Enter an ingredient...",
+          })}
           className={cn(
             "flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3",
             "text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -56,7 +61,10 @@ export function DislikesEditor({
       <div className="min-h-[100px]">
         {dislikes.length === 0 ? (
           <p className="py-8 text-center text-sm text-zinc-400">
-            暂无忌口，添加后推荐会自动避开这些食材
+            {pickByLocale(locale, {
+              zh: "暂无忌口，添加后推荐会自动避开这些食材",
+              en: "No dislikes yet. Recommendations will avoid added ingredients automatically.",
+            })}
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
